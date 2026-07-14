@@ -1,5 +1,7 @@
 # Web2APK Studio
 
+> **Panduan instalasi lengkap:** buka [`SETUP_GUIDE.md`](./SETUP_GUIDE.md) untuk setup Supabase Auth, database, private storage, GitHub Actions, APK signing, environment, dan deployment Vercel.
+
 Platform full-stack untuk mengubah **URL website** atau **source HTML/CSS/JS dalam ZIP** menjadi APK Android. Frontend dan API menggunakan Next.js, akun/database/private storage menggunakan Supabase, sedangkan GitHub Actions menjadi worker build Android sekaligus CI/CD.
 
 > GitHub Actions bukan server API 24/7. API tetap berjalan di Next.js (Vercel/hosting Node); Actions menerima job `workflow_dispatch`, membangun APK, mengunggah hasil ke Supabase, lalu memperbarui status database.

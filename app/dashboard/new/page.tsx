@@ -1,0 +1,2 @@
+import { BuildForm } from "@/components/build-form";
+export default function NewBuild(){return <div className="mx-auto w-full max-w-4xl"><p className="text-sm font-bold uppercase tracking-[.18em] text-cyan">Project baru</p><h1 className="mt-2 text-3xl font-black">Build aplikasi Android</h1><p className="mt-2 text-sm text-slate-500">Pilih sumber, atur identitas aplikasi, lalu builder akan mengerjakan sisanya.</p><BuildForm/></div>}

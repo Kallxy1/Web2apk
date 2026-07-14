@@ -1,0 +1,2 @@
+import { redirect } from "next/navigation"; import { createClient } from "@/lib/supabase/server"; import { DashboardShell } from "@/components/dashboard-shell";
+export default async function Layout({children}:{children:React.ReactNode}){const sb=await createClient();const {data:{user}}=await sb.auth.getUser();if(!user)redirect("/login");return <DashboardShell email={user.email||"Pengguna"}>{children}</DashboardShell>}

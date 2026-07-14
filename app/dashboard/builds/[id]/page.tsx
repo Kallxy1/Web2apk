@@ -1,0 +1,2 @@
+import { notFound } from "next/navigation";import { createClient } from "@/lib/supabase/server";import { BuildStatusView } from "@/components/build-status-view";import type { Build } from "@/lib/types";
+export default async function Page({params}:{params:Promise<{id:string}>}){const {id}=await params;const sb=await createClient();const {data}=await sb.from("builds").select("*").eq("id",id).single();if(!data)notFound();return <BuildStatusView initial={data as Build}/>}

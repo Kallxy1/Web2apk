@@ -1,0 +1,29 @@
+plugins { id 'com.android.application' }
+android {
+    namespace '__PACKAGE_NAME__'
+    compileSdk 35
+    defaultConfig {
+        applicationId '__PACKAGE_NAME__'
+        minSdk 23
+        targetSdk 35
+        versionCode __VERSION_CODE__
+        versionName '__VERSION_NAME__'
+    }
+    signingConfigs {
+        release {
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) signingConfig signingConfigs.release
+            else signingConfig signingConfigs.debug
+        }
+    }
+}

@@ -1,0 +1,10 @@
+node_modules/
+.next/
+.env
+.env.local
+*.jks
+*.keystore
+builder/work/
+.DS_Store
+
+*.tsbuildinfo

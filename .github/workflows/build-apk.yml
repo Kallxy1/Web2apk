@@ -1,0 +1,99 @@
+name: Build Android APK
+run-name: "Build ${{ inputs.app_name }} · ${{ inputs.build_id }}"
+on:
+  workflow_dispatch:
+    inputs:
+      build_id: { description: Build ID, required: true, type: string }
+      user_id: { description: User ID, required: true, type: string }
+      mode: { description: url atau zip, required: true, type: choice, options: [url, zip] }
+      source: { description: URL website atau signed source URL, required: true, type: string }
+      app_name: { description: Nama aplikasi, required: true, type: string }
+      package_name: { description: Android package, required: true, type: string }
+      version_name: { description: Version name, required: true, type: string }
+      version_code: { description: Version code, required: true, type: string }
+      orientation: { description: Orientasi, required: true, type: string }
+      theme_color: { description: Warna tema, required: true, type: string }
+permissions:
+  contents: read
+concurrency:
+  group: apk-${{ inputs.build_id }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      WORK_DIR: ${{ github.workspace }}/builder/work
+      MODE: ${{ inputs.mode }}
+      SOURCE: ${{ inputs.source }}
+      APP_NAME: ${{ inputs.app_name }}
+      PACKAGE_NAME: ${{ inputs.package_name }}
+      VERSION_NAME: ${{ inputs.version_name }}
+      VERSION_CODE: ${{ inputs.version_code }}
+      ORIENTATION: ${{ inputs.orientation }}
+      THEME_COLOR: ${{ inputs.theme_color }}
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tandai sebagai building
+        run: |
+          curl --fail --silent --show-error -X PATCH \
+            "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" -d '{"status":"building","error_message":null}'
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Siapkan project Android
+        run: |
+          rm -rf "$WORK_DIR"
+          cp -R builder/android-template "$WORK_DIR"
+          if [ "$MODE" = "zip" ]; then
+            curl --fail --location --retry 3 "$SOURCE" -o /tmp/source.zip
+            python3 builder/safe_extract.py /tmp/source.zip "$WORK_DIR/app/src/main/assets/www"
+          fi
+          node builder/prepare.mjs
+      - name: Siapkan signing key
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 --decode > "$WORK_DIR/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$WORK_DIR/release.jks" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+      - name: Build APK
+        working-directory: builder/work
+        run: gradle --no-daemon assembleRelease
+      - name: Upload APK ke private storage
+        run: |
+          APK="$WORK_DIR/app/build/outputs/apk/release/app-release.apk"
+          OBJECT="${{ inputs.user_id }}/${{ inputs.build_id }}.apk"
+          test -f "$APK"
+          curl --fail --silent --show-error -X POST \
+            "$SUPABASE_URL/storage/v1/object/apks/$OBJECT" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/vnd.android.package-archive" -H "x-upsert: true" \
+            --data-binary "@$APK"
+          jq -n --arg p "$OBJECT" '{status:"success",apk_path:$p,error_message:null}' >/tmp/done.json
+          curl --fail --silent --show-error -X PATCH \
+            "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" --data-binary @/tmp/done.json
+      - name: Simpan APK sebagai artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-${{ inputs.build_id }}
+          path: builder/work/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7
+      - name: Catat kegagalan
+        if: failure()
+        run: |
+          jq -n --arg e "Build GitHub Actions gagal. Buka run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{status:"failed",error_message:$e}' >/tmp/fail.json
+          curl --silent --show-error -X PATCH \
+            "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" --data-binary @/tmp/fail.json || true

@@ -1,2 +1,3 @@
-import { BuildForm } from "@/components/build-form";
-export default function NewBuild(){return <div className="mx-auto w-full max-w-4xl"><p className="text-sm font-bold uppercase tracking-[.18em] text-cyan">Project baru</p><h1 className="mt-2 text-3xl font-black">Build aplikasi Android</h1><p className="mt-2 text-sm text-slate-500">Pilih sumber, atur identitas aplikasi, lalu builder akan mengerjakan sisanya.</p><BuildForm/></div>}
+import type {Metadata} from "next";import {BuildForm} from "@/components/build-form";
+export const metadata:Metadata={title:"Build Aplikasi Baru",robots:{index:false,follow:false}};
+export default function NewBuild(){return <div className="mx-auto w-full max-w-5xl"><p className="eyebrow">Android builder</p><h1 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">Buat aplikasi baru.</h1><p className="mt-2 max-w-2xl text-xs leading-6 text-zinc-600">Upload source, sesuaikan identitas, permission, push notification, dan perilaku WebView. Konfigurasi file akan dideteksi otomatis.</p><BuildForm/></div>}

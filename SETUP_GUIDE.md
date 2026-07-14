@@ -45,13 +45,16 @@ Buka **Project Settings → API** (pada UI baru dapat muncul sebagai **Settings 
 
 1. Di Supabase, buka **SQL Editor**.
 2. Klik **New query**.
-3. Salin seluruh isi file:
+3. Jalankan kedua migration secara berurutan:
 
 ```text
 supabase/migrations/001_initial.sql
+supabase/migrations/002_advanced_app_options.sql
 ```
 
-4. Klik **Run**.
+Migration kedua menambahkan app icon, permission Android, OneSignal, welcome notification, fullscreen, kontrol zoom, dan custom user agent.
+
+4. Klik **Run** untuk masing-masing file.
 
 Migration tersebut otomatis membuat:
 
@@ -318,7 +321,48 @@ GITHUB_REF=main
 
 ---
 
-## 9. Tes build APK URL
+## 9. Pasang custom domain `web2apk.xystudio.my.id`
+
+1. Buka project di **Vercel → Settings → Domains**.
+2. Tambahkan `web2apk.xystudio.my.id`.
+3. Di DNS provider untuk `xystudio.my.id`, buat record sesuai instruksi yang ditampilkan Vercel. Untuk subdomain biasanya:
+
+```text
+Type: CNAME
+Name/Host: web2apk
+Target: cname.vercel-dns.com
+TTL: Auto
+```
+
+Jika Vercel menampilkan target yang berbeda, selalu ikuti nilai dari dashboard Vercel.
+
+4. Tunggu status domain menjadi **Valid Configuration**. Vercel akan menerbitkan SSL/TLS otomatis.
+5. Atur environment production:
+
+```env
+NEXT_PUBLIC_APP_URL=https://web2apk.xystudio.my.id
+```
+
+6. Di Supabase **Authentication → URL Configuration**, gunakan:
+
+```text
+Site URL: https://web2apk.xystudio.my.id
+Redirect URL: https://web2apk.xystudio.my.id/auth/callback
+```
+
+7. Redeploy aplikasi. Gunakan **HTTPS**, bukan HTTP, untuk production.
+
+## 10. Setup push notification OneSignal
+
+1. Buat akun dan Android app di <https://onesignal.com>.
+2. Saat diminta Firebase configuration, hubungkan project Firebase/FCM milik aplikasi Anda sesuai wizard OneSignal.
+3. Salin **OneSignal App ID** dari **Settings → Keys & IDs**.
+4. Saat membuat APK di Web2APK, aktifkan **OneSignal push notification** dan masukkan App ID tersebut.
+5. Setelah APK terpasang dan pengguna memberi permission notifikasi, kirim pesan dari dashboard OneSignal.
+
+OneSignal App ID bukan REST API key dan aman dimasukkan sebagai konfigurasi aplikasi. Jangan pernah menaruh OneSignal REST API key di APK atau form builder.
+
+## 11. Tes build APK URL
 
 1. Login ke dashboard production.
 2. Klik **Build APK**.
@@ -348,7 +392,7 @@ URL wajib HTTPS karena template Android memblokir cleartext HTTP.
 
 ---
 
-## 10. Tes build ZIP/HTML offline
+## 12. Tes build ZIP/HTML offline
 
 Buat struktur:
 
@@ -377,7 +421,7 @@ Batas saat ini:
 
 ---
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
 ### Build tetap `queued`
 
@@ -438,7 +482,7 @@ Untuk penggunaan publik/volume tinggi, gunakan self-hosted runner atau worker An
 
 ---
 
-## 12. Checklist production
+## 14. Checklist production
 
 - [ ] Supabase migration berhasil
 - [ ] Bucket `sources` dan `apks` bersifat private

@@ -1,5 +1,5 @@
 name: Build Android APK
-run-name: "Build ${{ inputs.app_name }} · ${{ inputs.build_id }}"
+run-name: "APK build · ${{ inputs.build_id }}"
 on:
   workflow_dispatch:
     inputs:
@@ -7,12 +7,7 @@ on:
       user_id: { description: User ID, required: true, type: string }
       mode: { description: url atau zip, required: true, type: choice, options: [url, zip] }
       source: { description: URL website atau signed source URL, required: true, type: string }
-      app_name: { description: Nama aplikasi, required: true, type: string }
-      package_name: { description: Android package, required: true, type: string }
-      version_name: { description: Version name, required: true, type: string }
-      version_code: { description: Version code, required: true, type: string }
-      orientation: { description: Orientasi, required: true, type: string }
-      theme_color: { description: Warna tema, required: true, type: string }
+      config: { description: JSON konfigurasi aplikasi, required: true, type: string }
 permissions:
   contents: read
 concurrency:
@@ -28,12 +23,7 @@ jobs:
       WORK_DIR: ${{ github.workspace }}/builder/work
       MODE: ${{ inputs.mode }}
       SOURCE: ${{ inputs.source }}
-      APP_NAME: ${{ inputs.app_name }}
-      PACKAGE_NAME: ${{ inputs.package_name }}
-      VERSION_NAME: ${{ inputs.version_name }}
-      VERSION_CODE: ${{ inputs.version_code }}
-      ORIENTATION: ${{ inputs.orientation }}
-      THEME_COLOR: ${{ inputs.theme_color }}
+      CONFIG_JSON: ${{ inputs.config }}
       KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +46,19 @@ jobs:
             curl --fail --location --retry 3 "$SOURCE" -o /tmp/source.zip
             python3 builder/safe_extract.py /tmp/source.zip "$WORK_DIR/app/src/main/assets/www"
           fi
+          ICON_URL=$(printf '%s' "$CONFIG_JSON" | jq -r '.iconUrl // empty')
+          if [ -n "$ICON_URL" ]; then
+            curl --fail --location --retry 3 "$ICON_URL" -o /tmp/app-icon
+            MIME=$(file --brief --mime-type /tmp/app-icon)
+            rm -f "$WORK_DIR/app/src/main/res/drawable/app_icon.xml"
+            case "$MIME" in
+              image/png) EXT=png ;;
+              image/jpeg) EXT=jpg ;;
+              image/webp) EXT=webp ;;
+              *) echo "Format icon tidak didukung: $MIME"; exit 1 ;;
+            esac
+            cp /tmp/app-icon "$WORK_DIR/app/src/main/res/drawable/app_icon.$EXT"
+          fi
           node builder/prepare.mjs
       - name: Siapkan signing key
         if: ${{ env.KEYSTORE_B64 != '' }}
@@ -76,8 +79,7 @@ jobs:
           curl --fail --silent --show-error -X POST \
             "$SUPABASE_URL/storage/v1/object/apks/$OBJECT" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            -H "Content-Type: application/vnd.android.package-archive" -H "x-upsert: true" \
-            --data-binary "@$APK"
+            -H "Content-Type: application/vnd.android.package-archive" -H "x-upsert: true" --data-binary "@$APK"
           jq -n --arg p "$OBJECT" '{status:"success",apk_path:$p,error_message:null}' >/tmp/done.json
           curl --fail --silent --show-error -X PATCH \
             "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
@@ -86,14 +88,13 @@ jobs:
       - name: Simpan APK sebagai artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.app_name }}-${{ inputs.build_id }}
+          name: web2apk-${{ inputs.build_id }}
           path: builder/work/app/build/outputs/apk/release/app-release.apk
           retention-days: 7
       - name: Catat kegagalan
         if: failure()
         run: |
-          jq -n --arg e "Build GitHub Actions gagal. Buka run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{status:"failed",error_message:$e}' >/tmp/fail.json
-          curl --silent --show-error -X PATCH \
-            "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+          jq -n --arg e "Build gagal. Buka $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{status:"failed",error_message:$e}' >/tmp/fail.json
+          curl --silent --show-error -X PATCH "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" --data-binary @/tmp/fail.json || true

@@ -1,16 +1,9 @@
 import fs from "node:fs";import path from "node:path";
-const root=process.env.WORK_DIR;if(!root)throw new Error("WORK_DIR missing");
-const values={
- "__PACKAGE_NAME__":process.env.PACKAGE_NAME,
- "__VERSION_CODE__":process.env.VERSION_CODE,
- "__VERSION_NAME__":process.env.VERSION_NAME,
- "__ORIENTATION__":process.env.ORIENTATION,
- "__THEME_COLOR__":process.env.THEME_COLOR,
- "__APP_NAME__":xml(process.env.APP_NAME||"Web App"),
- "__START_URL__":java(process.env.MODE==="zip"?"file:///android_asset/www/index.html":process.env.SOURCE||""),
- "__ALLOW_FILE__":process.env.MODE==="zip"?"true":"false"
-};
-function xml(s){return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");}
-function java(s){return s.replaceAll("\\","\\\\").replaceAll('"','\\"');}
-function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())walk(p);else if(/\.(java|gradle|xml)$/.test(p)){let t=fs.readFileSync(p,"utf8");for(const [a,b] of Object.entries(values)){if(b==null)throw new Error(`Missing value for ${a}`);t=t.replaceAll(a,b);}fs.writeFileSync(p,t);}}}
-walk(root);
+const root=process.env.WORK_DIR;if(!root)throw new Error("WORK_DIR missing");const c=JSON.parse(process.env.CONFIG_JSON||"{}");const p=c.permissions||{};
+const permissionMap={camera:["android.permission.CAMERA","Manifest.permission.CAMERA"],microphone:["android.permission.RECORD_AUDIO","Manifest.permission.RECORD_AUDIO"],location:["android.permission.ACCESS_FINE_LOCATION","Manifest.permission.ACCESS_FINE_LOCATION"],notifications:["android.permission.POST_NOTIFICATIONS","Manifest.permission.POST_NOTIFICATIONS"],vibrate:["android.permission.VIBRATE",null]};
+const selected=Object.entries(permissionMap).filter(([k])=>p[k]);const manifest=selected.map(([,v])=>`<uses-permission android:name="${v[0]}" />`).join("\n    ");const runtime=selected.map(([,v])=>v[1]).filter(Boolean);
+const values={"__PACKAGE_NAME__":c.packageName,"__VERSION_CODE__":String(c.versionCode),"__VERSION_NAME__":c.versionName,"__ORIENTATION__":c.orientation,"__THEME_COLOR__":c.themeColor,"__APP_NAME__":xml(c.appName||"Web App"),"__START_URL__":java(process.env.MODE==="zip"?"file:///android_asset/www/index.html":process.env.SOURCE||""),"__ALLOW_FILE__":process.env.MODE==="zip"?"true":"false","__ALLOW_ZOOM__":String(!!c.allowZoom),"__FULLSCREEN__":String(!!c.fullscreen),"__CUSTOM_USER_AGENT__":java(c.customUserAgent||""),"__ONESIGNAL_APP_ID__":java(c.notificationEnabled?c.oneSignalAppId||"":""),"__WELCOME_ENABLED__":String(!!c.welcomeNotificationEnabled),"__WELCOME_TITLE__":java(c.welcomeTitle||"Selamat datang!"),"__WELCOME_BODY__":java(c.welcomeBody||"Terima kasih sudah menginstal aplikasi kami."),"__PERMISSIONS__":manifest,"__RUNTIME_PERMISSIONS__":`new String[]{${runtime.join(",")}}`};
+function xml(s){return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+function java(s){return String(s).replaceAll("\\","\\\\").replaceAll('"','\\"').replaceAll("\n","\\n").replaceAll("\r","")}
+for(const required of ["__PACKAGE_NAME__","__VERSION_CODE__","__VERSION_NAME__","__ORIENTATION__","__THEME_COLOR__"])if(!values[required])throw new Error(`Missing config ${required}`);
+function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const target=path.join(dir,e.name);if(e.isDirectory())walk(target);else if(/\.(java|gradle|xml)$/.test(target)){let text=fs.readFileSync(target,"utf8");for(const [key,value] of Object.entries(values))text=text.replaceAll(key,value);fs.writeFileSync(target,text)}}}walk(root);

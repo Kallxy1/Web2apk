@@ -10,8 +10,11 @@ Platform full-stack untuk mengubah **URL website** atau **source HTML/CSS/JS dal
 
 - Registrasi/login email dan proteksi route
 - Dashboard project dan polling status build
-- Input URL online atau ZIP offline (maks. 50 MB)
-- Pengaturan nama, package ID, versi, orientasi, dan warna tema
+- Input URL online, ZIP offline, atau file HTML tunggal (maks. 50 MB)
+- Auto-detection judul HTML, nama file, dan saran package ID
+- App icon custom, versi, orientasi, warna sistem, fullscreen, zoom, dan user agent
+- Permission kamera, mikrofon, lokasi, notifikasi, dan getar
+- OneSignal push notification serta welcome notification custom
 - Worker Android WebView di GitHub Actions
 - Private source/APK bucket dan signed download URL
 - Supabase Row Level Security per pengguna
@@ -41,7 +44,7 @@ web2apk/
 ## 1. Persiapan Supabase
 
 1. Buat project di [Supabase](https://supabase.com).
-2. Buka **SQL Editor**, jalankan `supabase/migrations/001_initial.sql`.
+2. Buka **SQL Editor**, jalankan `supabase/migrations/001_initial.sql`, lalu `supabase/migrations/002_advanced_app_options.sql`.
 3. Di **Authentication → URL Configuration**, set Site URL ke domain aplikasi dan redirect URL ke `https://DOMAIN/auth/callback`.
 4. Ambil Project URL, anon key, dan service-role key dari pengaturan API.
 

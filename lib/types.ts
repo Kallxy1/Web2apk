@@ -12,6 +12,17 @@ export interface Build {
   version_code: number;
   orientation: "portrait" | "landscape" | "unspecified";
   theme_color: string;
+  source_file_name: string | null;
+  app_icon_path: string | null;
+  permissions: Record<"camera" | "microphone" | "location" | "notifications" | "vibrate", boolean>;
+  notification_enabled: boolean;
+  onesignal_app_id: string | null;
+  welcome_notification_enabled: boolean;
+  welcome_notification_title: string | null;
+  welcome_notification_body: string | null;
+  fullscreen: boolean;
+  allow_zoom: boolean;
+  custom_user_agent: string | null;
   status: BuildStatus;
   apk_path: string | null;
   error_message: string | null;

@@ -1,7 +1,2 @@
-import Link from "next/link";
-export function Logo() {
-  return <Link href="/" className="flex items-center gap-3 font-extrabold tracking-tight">
-    <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-cyan to-violet text-ink shadow-glow">W</span>
-    <span>Web2APK<span className="text-cyan">.</span></span>
-  </Link>;
-}
+import Image from "next/image";import Link from "next/link";
+export function Logo({compact=false}:{compact?:boolean}){return <Link href="/" aria-label="Web2APK home" className="flex items-center gap-2.5 font-black tracking-[-.03em]"><Image src="/logo.svg" alt="" width={34} height={34} priority className="rounded-md"/><span className={compact?"hidden sm:block":"block"}>Web2APK<span className="text-zinc-600">.</span></span></Link>}

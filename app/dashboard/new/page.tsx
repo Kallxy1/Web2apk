@@ -1,3 +1,2 @@
-import type {Metadata} from "next";import {LazyBuildForm} from "@/components/lazy-build-form";
-export const metadata:Metadata={title:"Build Aplikasi Baru",robots:{index:false,follow:false}};
-export default function NewBuild(){return <div className="mx-auto w-full max-w-5xl"><p className="eyebrow">Android builder</p><h1 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">Buat aplikasi baru.</h1><p className="mt-2 max-w-2xl text-xs leading-6 text-zinc-600">Upload source, sesuaikan identitas, permission, push notification, dan perilaku WebView. Konfigurasi file akan dideteksi otomatis.</p><LazyBuildForm/></div>}
+import {redirect} from "next/navigation";
+export default function NewBuild(){redirect("/c/new")}

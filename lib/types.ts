@@ -3,6 +3,7 @@ export type BuildMode = "url" | "zip";
 export interface Build {
   id: string;
   user_id: string;
+  public_code: string | null;
   name: string;
   package_name: string;
   mode: BuildMode;

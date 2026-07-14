@@ -51,9 +51,10 @@ Buka **Project Settings → API** (pada UI baru dapat muncul sebagai **Settings 
 supabase/migrations/001_initial.sql
 supabase/migrations/002_advanced_app_options.sql
 supabase/migrations/003_saas_and_build_operations.sql
+supabase/migrations/004_private_build_sessions.sql
 ```
 
-Migration kedua menambahkan app icon, permission Android, OneSignal, welcome notification, fullscreen, kontrol zoom, dan custom user agent. Migration ketiga menambahkan profil SaaS, paket/role, kuota build, progress real-time, output AAB, splash screen, dan retensi otomatis.
+Migration kedua menambahkan app icon, permission Android, OneSignal, welcome notification, fullscreen, kontrol zoom, dan custom user agent. Migration ketiga menambahkan profil SaaS, paket/role, kuota build, progress real-time, output AAB, splash screen, dan retensi otomatis. Migration keempat menambahkan kode sesi privat untuk URL `/c/{kode-acak}`.
 
 4. Klik **Run** untuk masing-masing file.
 

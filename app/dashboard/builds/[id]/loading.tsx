@@ -1,0 +1,1 @@
+export default function Loading(){return <div className="mx-auto max-w-3xl"><div className="skeleton h-3 w-28"/><div className="mt-6 border border-white/[.07] p-8"><div className="skeleton h-3 w-24"/><div className="skeleton mt-4 h-10 w-64"/><div className="skeleton mt-3 h-3 w-48"/><div className="skeleton mt-8 h-56 w-full"/></div></div>}

@@ -25,6 +25,13 @@ export interface Build {
   custom_user_agent: string | null;
   status: BuildStatus;
   apk_path: string | null;
+  aab_path: string | null;
+  progress: number;
+  current_step: string;
+  splash_enabled: boolean;
+  splash_background: string;
+  splash_duration: number;
+  expires_at: string | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;

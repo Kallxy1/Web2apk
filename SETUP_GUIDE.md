@@ -50,9 +50,10 @@ Buka **Project Settings → API** (pada UI baru dapat muncul sebagai **Settings 
 ```text
 supabase/migrations/001_initial.sql
 supabase/migrations/002_advanced_app_options.sql
+supabase/migrations/003_saas_and_build_operations.sql
 ```
 
-Migration kedua menambahkan app icon, permission Android, OneSignal, welcome notification, fullscreen, kontrol zoom, dan custom user agent.
+Migration kedua menambahkan app icon, permission Android, OneSignal, welcome notification, fullscreen, kontrol zoom, dan custom user agent. Migration ketiga menambahkan profil SaaS, paket/role, kuota build, progress real-time, output AAB, splash screen, dan retensi otomatis.
 
 4. Klik **Run** untuk masing-masing file.
 
@@ -304,6 +305,7 @@ GITHUB_TOKEN
 GITHUB_OWNER
 GITHUB_REPO
 GITHUB_REF
+CRON_SECRET
 ```
 
 Nilai production:
@@ -496,3 +498,33 @@ Untuk penggunaan publik/volume tinggi, gunakan self-hosted runner atau worker An
 - [ ] Build ZIP berhasil
 - [ ] Rate limit API diterapkan sebelum layanan publik
 - [ ] Monitoring kuota GitHub Actions dan Supabase aktif
+
+## 15. Aktifkan SaaS, admin, dan cleanup
+
+Setelah migration ketiga dijalankan, setiap akun baru otomatis mendapat profile paket `free`. Batas default:
+
+- Free: 3 build/hari, 25 MB, retensi 7 hari
+- Pro: 30 build/hari, 100 MB, retensi 30 hari
+- Business: 100 build/hari, 250 MB, retensi 90 hari
+
+Promosikan admin pertama melalui Supabase SQL Editor:
+
+```sql
+update public.profiles set role='admin' where email='EMAIL_ANDA';
+```
+
+Ubah paket pengguna sementara melalui SQL sampai payment gateway terhubung:
+
+```sql
+update public.profiles set plan='pro' where email='EMAIL_PENGGUNA';
+```
+
+Buat secret acak untuk cron cleanup:
+
+```bash
+openssl rand -hex 32
+```
+
+Simpan hasilnya sebagai `CRON_SECRET` di Vercel Production. Vercel Cron memanggil `/api/cron/cleanup` setiap hari untuk menghapus source dan output yang melewati masa retensi.
+
+Builder sekarang menghasilkan APK dan AAB. Pastikan migration ketiga sudah aktif sebelum menjalankan build baru agar kolom progress dan `aab_path` tersedia.

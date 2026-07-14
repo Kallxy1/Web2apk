@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -26,7 +27,7 @@ public class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(Color.parseColor("__THEME_COLOR__"));
         if(__FULLSCREEN__)getWindow().getDecorView().setSystemUiVisibility(5894);
-        setContentView(R.layout.activity_main);requestSelectedPermissions();
+        setContentView(R.layout.activity_main);View splash=findViewById(R.id.splash);if(__SPLASH_ENABLED__){splash.setVisibility(View.VISIBLE);splash.postDelayed(()->splash.setVisibility(View.GONE),__SPLASH_DURATION__);}requestSelectedPermissions();
         if(!ONE_SIGNAL_APP_ID.isEmpty())OneSignal.initWithContext(this,ONE_SIGNAL_APP_ID);
         webView=findViewById(R.id.webview);WebSettings s=webView.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);s.setDatabaseEnabled(true);s.setAllowFileAccess(__ALLOW_FILE__);s.setAllowContentAccess(false);s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);s.setSupportZoom(__ALLOW_ZOOM__);s.setBuiltInZoomControls(__ALLOW_ZOOM__);s.setDisplayZoomControls(false);String ua="__CUSTOM_USER_AGENT__";if(!ua.isEmpty())s.setUserAgentString(ua);
         webView.setWebViewClient(new WebViewClient(){@Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return false;}});

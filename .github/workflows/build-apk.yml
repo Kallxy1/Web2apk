@@ -26,14 +26,14 @@ jobs:
       CONFIG_JSON: ${{ inputs.config }}
       KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tandai sebagai building
         run: |
           curl --fail --silent --show-error -X PATCH \
             "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            -H "Content-Type: application/json" -d '{"status":"building","error_message":null}'
-      - uses: actions/setup-java@v4
+            -H "Content-Type: application/json" -d '{"status":"building","progress":10,"current_step":"Worker aktif","error_message":null}'
+      - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
@@ -60,6 +60,9 @@ jobs:
             cp /tmp/app-icon "$WORK_DIR/app/src/main/res/drawable/app_icon.$EXT"
           fi
           node builder/prepare.mjs
+          curl --fail --silent --show-error -X PATCH "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" \
+            -d '{"progress":35,"current_step":"Project Android disiapkan"}'
       - name: Siapkan signing key
         if: ${{ env.KEYSTORE_B64 != '' }}
         run: |
@@ -68,19 +71,28 @@ jobs:
           echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
-      - name: Build APK
+      - name: Build APK dan AAB
         working-directory: builder/work
-        run: gradle --no-daemon assembleRelease
+        run: |
+          curl --fail --silent --show-error -X PATCH "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Content-Type: application/json" \
+            -d '{"progress":55,"current_step":"Gradle sedang membangun APK dan AAB"}'
+          gradle --no-daemon assembleRelease bundleRelease
       - name: Upload APK ke private storage
         run: |
           APK="$WORK_DIR/app/build/outputs/apk/release/app-release.apk"
+          AAB="$WORK_DIR/app/build/outputs/bundle/release/app-release.aab"
           OBJECT="${{ inputs.user_id }}/${{ inputs.build_id }}.apk"
-          test -f "$APK"
+          AAB_OBJECT="${{ inputs.user_id }}/${{ inputs.build_id }}.aab"
+          test -f "$APK" && test -f "$AAB"
           curl --fail --silent --show-error -X POST \
             "$SUPABASE_URL/storage/v1/object/apks/$OBJECT" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/vnd.android.package-archive" -H "x-upsert: true" --data-binary "@$APK"
-          jq -n --arg p "$OBJECT" '{status:"success",apk_path:$p,error_message:null}' >/tmp/done.json
+          curl --fail --silent --show-error -X POST "$SUPABASE_URL/storage/v1/object/apks/$AAB_OBJECT" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/octet-stream" -H "x-upsert: true" --data-binary "@$AAB"
+          jq -n --arg p "$OBJECT" --arg a "$AAB_OBJECT" '{status:"success",progress:100,current_step:"Build selesai",apk_path:$p,aab_path:$a,error_message:null}' >/tmp/done.json
           curl --fail --silent --show-error -X PATCH \
             "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
@@ -89,12 +101,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web2apk-${{ inputs.build_id }}
-          path: builder/work/app/build/outputs/apk/release/app-release.apk
+          path: |
+            builder/work/app/build/outputs/apk/release/app-release.apk
+            builder/work/app/build/outputs/bundle/release/app-release.aab
           retention-days: 7
       - name: Catat kegagalan
         if: failure()
         run: |
-          jq -n --arg e "Build gagal. Buka $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{status:"failed",error_message:$e}' >/tmp/fail.json
+          jq -n --arg e "Build gagal. Buka $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{status:"failed",current_step:"Build gagal",error_message:$e}' >/tmp/fail.json
           curl --silent --show-error -X PATCH "$SUPABASE_URL/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" --data-binary @/tmp/fail.json || true

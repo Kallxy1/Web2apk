@@ -1,51 +1,190 @@
-# Panduan Setup Web2APK Studio
+# Web2APK — Panduan Setup Production Lengkap
 
-Panduan ini menyiapkan **Supabase Auth**, **database PostgreSQL**, **private storage**, **GitHub Actions APK builder**, dan **deployment Next.js**.
-
-## Arsitektur singkat
+Panduan ini adalah sumber konfigurasi utama Web2APK untuk domain:
 
 ```text
-Browser
-  └─ Next.js (Frontend + Backend API)
-       ├─ Supabase Auth
-       ├─ Supabase PostgreSQL
-       ├─ Supabase private Storage
-       └─ GitHub workflow_dispatch
-            └─ Android/Gradle builder
-                 └─ Upload APK ke Supabase Storage
+https://web2apk.xystudio.my.id
 ```
 
-GitHub Actions hanya menjadi worker build dan CI/CD, bukan server API 24/7. Next.js harus berjalan di Vercel atau hosting Node.js lain.
+Mencakup Supabase Auth, PostgreSQL, Row Level Security, private Storage, GitHub Actions Android builder, APK/AAB signing, OneSignal, Vercel, custom domain, SaaS quota, admin, cron cleanup, keamanan, performa, troubleshooting, dan operasional production.
+
+> **Penting:** jangan pernah commit `.env`, token GitHub, Supabase service-role key, Android keystore, password signing, atau OneSignal REST API key. `.env.example` boleh masuk repository karena hanya berisi placeholder.
 
 ---
 
-## 1. Buat project Supabase
+## Daftar Isi
 
-1. Masuk ke <https://supabase.com/dashboard>.
+1. Arsitektur
+2. Kebutuhan awal
+3. Setup Supabase project
+4. Menjalankan database migration
+5. Setup Supabase Auth
+6. Setup custom SMTP
+7. Setup Storage dan RLS
+8. Setup GitHub repository
+9. Token GitHub untuk workflow dispatch
+10. GitHub Actions secrets
+11. Android production signing
+12. Environment Vercel
+13. Deployment Vercel
+14. Custom domain
+15. Admin dan paket SaaS
+16. OneSignal push notification
+17. Pengujian end-to-end
+18. Build URL, HTML, ZIP, APK, dan AAB
+19. Retention dan automatic cleanup
+20. Optimasi performa dan anti-lag
+21. SEO dan monitoring
+22. Keamanan production
+23. Troubleshooting
+24. Update dan rollback
+25. Checklist production
+
+---
+
+# 1. Arsitektur
+
+```text
+Browser / Pengguna
+│
+├── Next.js frontend
+│   ├── Landing page
+│   ├── Authentication UI
+│   ├── Dashboard
+│   ├── Private create session /c/{kode}
+│   ├── Pricing, FAQ, TOS, Privacy, Security
+│   └── Skeleton/loading/animations
+│
+├── Next.js backend API di Vercel
+│   ├── Create build
+│   ├── Build status
+│   ├── Retry build
+│   ├── Delete project
+│   ├── Signed APK/AAB download
+│   └── Scheduled cleanup
+│
+├── Supabase
+│   ├── Email Auth
+│   ├── PostgreSQL
+│   ├── Row Level Security
+│   ├── Private source Storage
+│   └── Private APK/AAB Storage
+│
+└── GitHub Actions
+    ├── Download private source
+    ├── Safe ZIP extraction
+    ├── Generate Android project
+    ├── Add icon, permission, splash, OneSignal
+    ├── Build APK dan AAB
+    ├── Production signing
+    ├── Upload output ke Supabase
+    └── Update build progress
+```
+
+GitHub Actions adalah **worker build**, bukan backend API 24/7. Frontend dan backend API berjalan melalui Next.js di Vercel.
+
+---
+
+# 2. Kebutuhan Awal
+
+Siapkan:
+
+- Akun GitHub
+- Repository `Kallxy1/Web2apk`
+- Akun Vercel
+- Project Supabase
+- Domain `xystudio.my.id`
+- Node.js 20+ untuk development lokal
+- Java `keytool` jika ingin production signing
+- OneSignal account jika push notification diperlukan
+
+Repository:
+
+```text
+https://github.com/Kallxy1/Web2apk
+```
+
+Domain production:
+
+```text
+https://web2apk.xystudio.my.id
+```
+
+---
+
+# 3. Setup Supabase Project
+
+1. Buka <https://supabase.com/dashboard>.
 2. Klik **New project**.
-3. Pilih organisasi, lalu isi:
-   - Project name: `web2apk`
-   - Database password: buat password kuat dan simpan
-   - Region: pilih yang dekat dengan pengguna
-4. Tunggu hingga project aktif.
+3. Pilih organisasi.
+4. Isi nama project, misalnya `web2apk-production`.
+5. Buat database password yang kuat.
+6. Pilih region terdekat dengan mayoritas pengguna.
+7. Tunggu project selesai dibuat.
 
-### Ambil API credentials
+## 3.1 Ambil project credentials
 
-Buka **Project Settings → API** (pada UI baru dapat muncul sebagai **Settings → Data API**), lalu catat:
+Buka:
 
-- Project URL, contoh `https://abcxyz.supabase.co`
-- `anon` / publishable key
-- `service_role` / secret key
+```text
+Supabase → Project Settings → API
+```
 
-`service_role` sangat rahasia. Key ini hanya boleh dipasang pada backend/Vercel dan GitHub Actions. Jangan memakai nama environment yang diawali `NEXT_PUBLIC_` untuk service-role key.
+Pada UI Supabase versi lain dapat tampil sebagai:
+
+```text
+Settings → Data API
+```
+
+Catat:
+
+- Project URL
+- Anon/publishable key
+- Service-role/secret key
+
+Project URL yang benar berbentuk:
+
+```text
+https://PROJECT_ID.supabase.co
+```
+
+**Jangan gunakan:**
+
+```text
+https://PROJECT_ID.supabase.co/rest/v1
+https://PROJECT_ID.supabase.co/auth/v1
+https://PROJECT_ID.supabase.co/storage/v1
+```
+
+Supabase SDK menambahkan path API secara otomatis. Menambahkan `/rest/v1` secara manual dapat menyebabkan:
+
+```text
+Invalid path specified in request URL
+```
+
+Aplikasi memiliki normalisasi URL sebagai perlindungan tambahan, tetapi environment tetap harus diisi dengan benar.
+
+## 3.2 Fungsi setiap key
+
+| Key | Lokasi | Boleh berada di browser? |
+|---|---|---:|
+| Project URL | Browser/server | Ya |
+| Anon/publishable key | Browser/server | Ya |
+| Service-role/secret key | Backend/Actions | **Tidak** |
+
+Jangan memberi prefix `NEXT_PUBLIC_` pada service-role key.
 
 ---
 
-## 2. Buat database, RLS, dan Storage
+# 4. Menjalankan Database Migration
 
-1. Di Supabase, buka **SQL Editor**.
-2. Klik **New query**.
-3. Jalankan kedua migration secara berurutan:
+Buka:
+
+```text
+Supabase → SQL Editor → New query
+```
+
+Jalankan migration **berurutan**:
 
 ```text
 supabase/migrations/001_initial.sql
@@ -54,157 +193,351 @@ supabase/migrations/003_saas_and_build_operations.sql
 supabase/migrations/004_private_build_sessions.sql
 ```
 
-Migration kedua menambahkan app icon, permission Android, OneSignal, welcome notification, fullscreen, kontrol zoom, dan custom user agent. Migration ketiga menambahkan profil SaaS, paket/role, kuota build, progress real-time, output AAB, splash screen, dan retensi otomatis. Migration keempat menambahkan kode sesi privat untuk URL `/c/{kode-acak}`.
+Jalankan satu file, pastikan berhasil, lalu lanjut ke file berikutnya.
 
-4. Klik **Run** untuk masing-masing file.
+## 4.1 Migration 001 — Core
 
-Migration tersebut otomatis membuat:
+Membuat:
 
-- Enum `build_mode`: `url`, `zip`
-- Enum `build_status`: `queued`, `building`, `success`, `failed`
+- Enum `build_mode`
+- Enum `build_status`
 - Table `public.builds`
-- Index build per pengguna
 - Trigger `updated_at`
 - Row Level Security
-- Private bucket `sources`
-- Private bucket `apks`
+- Bucket private `sources`
+- Bucket private `apks`
 
-### Verifikasi database
+## 4.2 Migration 002 — Advanced app options
 
-Buka **Table Editor → builds**. Kolom yang terlihat harus mencakup:
+Menambahkan:
+
+- App icon
+- Source filename
+- Android permission JSON
+- OneSignal App ID
+- Welcome notification
+- Fullscreen mode
+- WebView zoom control
+- Custom user-agent
+- Image MIME support pada source bucket
+
+## 4.3 Migration 003 — SaaS operations
+
+Menambahkan:
+
+- Table `profiles`
+- Plan `free`, `pro`, `business`
+- Role `user`, `admin`
+- Trigger profile pengguna baru
+- Daily build usage
+- APK dan AAB paths
+- Build progress
+- Current build step
+- Splash screen
+- Retention/expiry
+- Storage limit paket tertinggi
+- Index operasional
+
+## 4.4 Migration 004 — Private create sessions
+
+Menambahkan `public_code` untuk URL seperti:
 
 ```text
-id, user_id, name, package_name, mode, source_url, source_path,
-version_name, version_code, orientation, theme_color, status,
-apk_path, error_message, created_at, updated_at
+/c/a81b9c20f4d312
 ```
 
-### Verifikasi Storage
+Walaupun kolomnya bernama `public_code`, project tetap dilindungi login dan RLS. Kode hanya menjadi identifier URL yang sulit ditebak, bukan izin akses publik.
 
-Buka **Storage**. Harus ada dua bucket:
+## 4.5 Verifikasi table
 
-- `sources` — private, menyimpan ZIP sumber
-- `apks` — private, menyimpan APK hasil build
+Buka **Table Editor → builds**. Pastikan kolom penting tersedia:
 
-Jangan mengubah bucket menjadi public. Download APK diberikan melalui signed URL sementara oleh backend.
+```text
+id
+user_id
+public_code
+name
+package_name
+mode
+source_url
+source_path
+source_file_name
+app_icon_path
+version_name
+version_code
+orientation
+theme_color
+permissions
+notification_enabled
+onesignal_app_id
+welcome_notification_enabled
+welcome_notification_title
+welcome_notification_body
+fullscreen
+allow_zoom
+custom_user_agent
+splash_enabled
+splash_background
+splash_duration
+status
+progress
+current_step
+apk_path
+aab_path
+expires_at
+error_message
+created_at
+updated_at
+```
 
-### Cara kerja RLS
+Pastikan table berikut juga tersedia:
 
-Policy pada table hanya mengizinkan pengguna membaca, membuat, dan menghapus build miliknya sendiri. Worker GitHub memakai `service_role`, sehingga dapat memperbarui status dan path APK meskipun RLS aktif.
+```text
+public.profiles
+```
+
+## 4.6 Jangan menjalankan migration acak
+
+Migration harus dijalankan satu kali dan berurutan. Jika migration enum dijalankan ulang dan muncul pesan object already exists, jangan menghapus database production. Periksa migration mana yang sudah aktif terlebih dahulu.
 
 ---
 
-## 3. Setup Supabase Authentication
+# 5. Setup Supabase Authentication
 
-Buka **Authentication → Providers → Email**.
+Buka:
+
+```text
+Authentication → Providers → Email
+```
 
 Aktifkan:
 
-- **Enable Email provider**
-- **Allow new users to sign up**
+- Enable Email provider
+- Allow new users to sign up
+- Confirm email untuk production
 
-Untuk production, disarankan mengaktifkan **Confirm email**. Untuk testing lokal yang lebih cepat, confirm email boleh dimatikan sementara.
+Untuk testing singkat, email confirmation boleh dimatikan sementara. Aktifkan kembali sebelum website dibuka ke publik.
 
-### URL Configuration
+## 5.1 URL Configuration
 
-Buka **Authentication → URL Configuration**.
+Buka:
 
-Saat development:
+```text
+Authentication → URL Configuration
+```
+
+Isi:
 
 ```text
 Site URL:
-http://localhost:3000
+https://web2apk.xystudio.my.id
+```
 
-Redirect URLs:
+Tambahkan redirect URLs:
+
+```text
+https://web2apk.xystudio.my.id/auth/callback
+https://web2apk.xystudio.my.id/**
 http://localhost:3000/auth/callback
+http://localhost:3000/**
 ```
 
-Setelah deploy ke Vercel, tambahkan:
+Jika menggunakan Vercel Preview, tambahkan pola preview secara hati-hati atau tambahkan URL preview tertentu yang sedang dipakai.
+
+## 5.2 Confirmation email flow
+
+Alur normal:
 
 ```text
-https://DOMAIN-ANDA.vercel.app/auth/callback
+/register
+→ Supabase mengirim email
+→ pengguna klik tautan
+→ /auth/callback
+→ exchange code menjadi session
+→ /dashboard
 ```
 
-Kemudian ubah Site URL menjadi domain production:
+Pastikan template email konfirmasi menggunakan confirmation URL yang disediakan Supabase.
 
-```text
-https://DOMAIN-ANDA.vercel.app
-```
+## 5.3 Tes Auth
 
-Jangan menghapus redirect localhost jika masih ingin melakukan development lokal.
+Uji:
 
-### Template email opsional
-
-Buka **Authentication → Email Templates → Confirm signup**. Template default sudah dapat digunakan. Pastikan tautan konfirmasi menggunakan `{{ .ConfirmationURL }}`.
+- Registrasi akun baru
+- Email confirmation
+- Login
+- Refresh browser
+- Logout
+- Login password salah
+- User A tidak dapat membuka build User B
 
 ---
 
-## 4. Siapkan repository GitHub
+# 6. Setup Custom SMTP
 
-Repository project:
+Email bawaan Supabase cocok untuk development, tetapi production sebaiknya memakai SMTP sendiri.
+
+Provider yang dapat digunakan:
+
+- Resend
+- Brevo
+- Postmark
+- Amazon SES
+
+Gunakan alamat seperti:
 
 ```text
-https://github.com/Kallxy1/Web2apk
+noreply@xystudio.my.id
+support@xystudio.my.id
 ```
 
-Buka **Settings → Actions → General**.
+Konfigurasikan DNS:
 
-Pastikan:
+- SPF
+- DKIM
+- DMARC
 
-- Actions diizinkan berjalan pada repository
-- Workflow dari GitHub Actions resmi diizinkan
-- Workflow permissions minimal **Read repository contents**
+Setelah SMTP aktif, uji email pada Gmail, Outlook, Yahoo, dan folder spam.
 
-Project memiliki:
+Jangan menaruh SMTP password di repository.
+
+---
+
+# 7. Setup Storage dan RLS
+
+Buka **Storage** dan pastikan ada:
 
 ```text
-.github/workflows/build-apk.yml
+sources  → private
+apks     → private
+```
+
+Jangan mengubah bucket menjadi public.
+
+## 7.1 Struktur object
+
+```text
+sources/{user_id}/{build_id}/source.zip
+sources/{user_id}/{build_id}/icon.png
+apks/{user_id}/{build_id}.apk
+apks/{user_id}/{build_id}.aab
+```
+
+Download dilakukan memakai signed URL sementara.
+
+## 7.2 Row Level Security
+
+RLS memastikan pengguna hanya membaca project miliknya. Service-role dipakai backend dan GitHub worker untuk operasi server-side.
+
+Jangan menonaktifkan RLS untuk memperbaiki error. Cari policy atau credential yang salah.
+
+---
+
+# 8. Setup GitHub Repository
+
+Repository:
+
+```text
+Kallxy1/Web2apk
+```
+
+Buka:
+
+```text
+Settings → Actions → General
+```
+
+Pastikan GitHub Actions diizinkan.
+
+Workflow:
+
+```text
 .github/workflows/ci.yml
+.github/workflows/build-apk.yml
 ```
 
-`build-apk.yml` menerima job dari backend, menjalankan Gradle, mengunggah APK, lalu memperbarui database.
+CI menjalankan typecheck dan Next.js production build. APK workflow menjalankan Android builder.
+
+## 8.1 Repository public vs private
+
+Untuk membatasi penyalinan source, ubah repository menjadi private:
+
+```text
+Settings → General → Danger Zone → Change repository visibility
+```
+
+Pastikan integrasi Vercel tetap memiliki akses ke private repository.
+
+`LICENSE` dan Terms memberi perlindungan legal, tetapi repository private memberi perlindungan teknis yang lebih kuat. Website publik tetap mengirim HTML/CSS/JavaScript client ke browser dan tidak mungkin dibuat 100% anti-copy.
 
 ---
 
-## 5. Buat token khusus workflow dispatch
+# 9. Token GitHub untuk Workflow Dispatch
 
-Token untuk backend berbeda dari token sementara yang dipakai untuk `git push`.
+Backend Next.js memerlukan token untuk memanggil:
+
+```text
+workflow_dispatch
+```
 
 Buat **fine-grained personal access token**:
 
-1. GitHub → **Settings**.
-2. **Developer settings → Personal access tokens → Fine-grained tokens**.
-3. Klik **Generate new token**.
-4. Resource owner: `Kallxy1`.
-5. Repository access: **Only select repositories → Web2apk**.
-6. Repository permissions:
-   - **Actions: Read and write**
-   - **Metadata: Read-only** (otomatis)
-7. Pilih expiration yang wajar, misalnya 90 hari.
-8. Simpan token sebagai `GITHUB_TOKEN` di backend/Vercel.
+1. GitHub Settings
+2. Developer settings
+3. Personal access tokens
+4. Fine-grained token
+5. Resource owner: `Kallxy1`
+6. Repository access: hanya `Web2apk`
+7. Permission:
+   - Actions: Read and write
+   - Metadata: Read-only
+8. Gunakan expiration yang wajar
 
-Jangan memasukkan token ini ke source code, `.env.example`, commit, atau GitHub Actions secrets kecuali memang diperlukan. Dalam arsitektur ini token tersebut hanya dibutuhkan oleh backend Next.js untuk memanggil `workflow_dispatch`.
+Simpan di Vercel sebagai:
+
+```text
+GITHUB_TOKEN
+```
+
+Token untuk workflow dispatch berbeda dari token sementara untuk `git push`.
+
+Jika token pernah ditulis di chat, screenshot, log, atau source code, rotate/revoke token tersebut.
 
 ---
 
-## 6. Tambahkan GitHub Actions secrets
+# 10. GitHub Actions Secrets
 
-Di repository buka:
+Buka:
 
-**Settings → Secrets and variables → Actions → New repository secret**
+```text
+Repository → Settings → Secrets and variables → Actions
+```
 
-Tambahkan secret wajib:
+Tambahkan:
 
-| Nama | Isi |
+| Secret | Nilai |
 |---|---|
-| `SUPABASE_URL` | Project URL Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | `service_role` / secret key Supabase |
+| `SUPABASE_URL` | `https://PROJECT_ID.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role key |
 
-### APK signing production
+`SUPABASE_URL` harus base URL, tanpa `/rest/v1`. Workflow memiliki normalisasi tambahan, tetapi secret tetap sebaiknya benar.
 
-Tanpa signing secrets, builder memakai debug signing. APK tetap dapat diinstal untuk testing, tetapi tidak ideal untuk distribusi production atau update aplikasi.
+Untuk production signing tambahkan:
 
-Buat keystore di komputer lokal:
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
+
+---
+
+# 11. Android Production Signing
+
+Tanpa keystore production, builder memakai debug signing. APK dapat dipasang untuk testing, tetapi tidak ideal untuk distribusi production.
+
+## 11.1 Membuat keystore
 
 ```bash
 keytool -genkeypair -v \
@@ -215,7 +548,7 @@ keytool -genkeypair -v \
   -validity 10000
 ```
 
-Ubah keystore menjadi base64.
+## 11.2 Ubah menjadi base64
 
 Linux:
 
@@ -229,303 +562,853 @@ macOS:
 base64 < release.jks | tr -d '\n' > release.jks.base64.txt
 ```
 
-Tambahkan empat GitHub Actions secrets:
+Masukkan isi file base64 ke GitHub secret:
 
-| Nama | Isi |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | Isi `release.jks.base64.txt` |
-| `ANDROID_KEYSTORE_PASSWORD` | Password keystore |
-| `ANDROID_KEY_ALIAS` | `web2apk` atau alias yang dipilih |
-| `ANDROID_KEY_PASSWORD` | Password key |
+```text
+ANDROID_KEYSTORE_BASE64
+```
 
-Simpan file `release.jks` dan seluruh password di password manager/offline backup. Aplikasi Android hanya dapat diperbarui dengan signing key yang sama.
+## 11.3 Backup
+
+Backup permanen:
+
+- `release.jks`
+- Store password
+- Key alias
+- Key password
+
+Jika signing key hilang, update aplikasi dengan package name yang sama dapat menjadi tidak mungkin.
+
+Jangan commit `.jks`, `.keystore`, atau file base64.
 
 ---
 
-## 7. Setup environment lokal
-
-Clone repository:
-
-```bash
-git clone https://github.com/Kallxy1/Web2apk.git
-cd Web2apk
-npm install
-cp .env.example .env.local
-```
-
-Isi `.env.local`:
-
-```env
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_SUPABASE_URL=https://PROJECT_ID.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=SUPABASE_ANON_ATAU_PUBLISHABLE_KEY
-SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY
-
-GITHUB_TOKEN=FINE_GRAINED_TOKEN_UNTUK_WORKFLOW_DISPATCH
-GITHUB_OWNER=Kallxy1
-GITHUB_REPO=Web2apk
-GITHUB_REF=main
-```
-
-Jalankan:
-
-```bash
-npm run dev
-```
+# 12. Environment Vercel
 
 Buka:
 
 ```text
-http://localhost:3000
+Vercel → Project → Settings → Environment Variables
 ```
 
-### Tes Auth
-
-1. Buka `/register`.
-2. Buat akun dengan email aktif.
-3. Jika Confirm email aktif, buka email konfirmasi.
-4. Tautan akan kembali ke `/auth/callback` lalu `/dashboard`.
-5. Jika email tidak diterima, periksa **Supabase → Authentication → Logs** dan folder spam.
-
----
-
-## 8. Deploy frontend dan backend API ke Vercel
-
-1. Masuk ke <https://vercel.com>.
-2. Klik **Add New → Project**.
-3. Import `Kallxy1/Web2apk`.
-4. Framework harus terdeteksi sebagai **Next.js**.
-5. Tambahkan environment variables berikut untuk Production, Preview, dan Development sesuai kebutuhan:
-
-```text
-NEXT_PUBLIC_APP_URL
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-GITHUB_TOKEN
-GITHUB_OWNER
-GITHUB_REPO
-GITHUB_REF
-CRON_SECRET
-```
-
-Nilai production:
-
-```env
-NEXT_PUBLIC_APP_URL=https://DOMAIN-VERCEL-ANDA.vercel.app
-GITHUB_OWNER=Kallxy1
-GITHUB_REPO=Web2apk
-GITHUB_REF=main
-```
-
-6. Klik **Deploy**.
-7. Setelah domain tersedia, kembali ke Supabase Authentication dan tambahkan callback production seperti pada bagian Auth.
-8. Redeploy jika Anda mengubah environment variable.
-
----
-
-## 9. Pasang custom domain `web2apk.xystudio.my.id`
-
-1. Buka project di **Vercel → Settings → Domains**.
-2. Tambahkan `web2apk.xystudio.my.id`.
-3. Di DNS provider untuk `xystudio.my.id`, buat record sesuai instruksi yang ditampilkan Vercel. Untuk subdomain biasanya:
-
-```text
-Type: CNAME
-Name/Host: web2apk
-Target: cname.vercel-dns.com
-TTL: Auto
-```
-
-Jika Vercel menampilkan target yang berbeda, selalu ikuti nilai dari dashboard Vercel.
-
-4. Tunggu status domain menjadi **Valid Configuration**. Vercel akan menerbitkan SSL/TLS otomatis.
-5. Atur environment production:
+Tambahkan:
 
 ```env
 NEXT_PUBLIC_APP_URL=https://web2apk.xystudio.my.id
+NEXT_PUBLIC_SUPABASE_URL=https://PROJECT_ID.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=SUPABASE_ANON_OR_PUBLISHABLE_KEY
+SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY
+GITHUB_TOKEN=FINE_GRAINED_WORKFLOW_TOKEN
+GITHUB_OWNER=Kallxy1
+GITHUB_REPO=Web2apk
+GITHUB_REF=main
+CRON_SECRET=RANDOM_LONG_SECRET
 ```
 
-6. Di Supabase **Authentication → URL Configuration**, gunakan:
-
-```text
-Site URL: https://web2apk.xystudio.my.id
-Redirect URL: https://web2apk.xystudio.my.id/auth/callback
-```
-
-7. Redeploy aplikasi. Gunakan **HTTPS**, bukan HTTP, untuk production.
-
-## 10. Setup push notification OneSignal
-
-1. Buat akun dan Android app di <https://onesignal.com>.
-2. Saat diminta Firebase configuration, hubungkan project Firebase/FCM milik aplikasi Anda sesuai wizard OneSignal.
-3. Salin **OneSignal App ID** dari **Settings → Keys & IDs**.
-4. Saat membuat APK di Web2APK, aktifkan **OneSignal push notification** dan masukkan App ID tersebut.
-5. Setelah APK terpasang dan pengguna memberi permission notifikasi, kirim pesan dari dashboard OneSignal.
-
-OneSignal App ID bukan REST API key dan aman dimasukkan sebagai konfigurasi aplikasi. Jangan pernah menaruh OneSignal REST API key di APK atau form builder.
-
-## 11. Tes build APK URL
-
-1. Login ke dashboard production.
-2. Klik **Build APK**.
-3. Pilih **Dari URL**.
-4. Isi contoh:
-
-```text
-Nama aplikasi: Web Test
-Package name: com.kallxy.webtest
-URL: https://example.com
-Versi: 1.0.0
-Version code: 1
-Orientasi: Otomatis
-```
-
-5. Klik **Mulai build APK**.
-6. Buka GitHub repository → **Actions → Build Android APK**.
-7. Status dashboard berubah:
-
-```text
-queued → building → success
-```
-
-8. Klik **Download APK**.
-
-URL wajib HTTPS karena template Android memblokir cleartext HTTP.
-
----
-
-## 12. Tes build ZIP/HTML offline
-
-Buat struktur:
-
-```text
-web-offline/
-├── index.html
-├── css/style.css
-├── js/app.js
-└── assets/logo.png
-```
-
-ZIP isi foldernya agar `index.html` berada di root ZIP:
-
-```bash
-cd web-offline
-zip -r ../web-offline.zip .
-```
-
-Upload `web-offline.zip` dari dashboard. Builder juga menerima satu folder pembungkus, tetapi `index.html` tetap wajib ada di root atau tepat di dalam satu folder tersebut.
-
-Batas saat ini:
-
-- ZIP upload: 50 MB
-- Hasil ekstraksi: 250 MB
-- Satu file hasil ekstraksi: 100 MB
-
----
-
-## 13. Troubleshooting
-
-### Build tetap `queued`
-
-Periksa:
-
-- `GITHUB_TOKEN` di Vercel masih aktif
-- Token memiliki permission **Actions: Read and write**
-- `GITHUB_OWNER=Kallxy1`
-- `GITHUB_REPO=Web2apk`
-- Workflow Actions di repository tidak dinonaktifkan
-- Vercel deployment sudah di-redeploy setelah env diubah
-
-### Workflow gagal memperbarui database
-
-Periksa repository Actions secrets:
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-Pastikan service-role key, bukan anon key.
-
-### Registrasi berhasil tetapi tidak bisa login
-
-Periksa:
-
-- Pengguna sudah mengklik email konfirmasi
-- Redirect URL `/auth/callback` sudah diizinkan
-- Site URL Supabase sesuai domain
-- Log Authentication Supabase
-
-### ZIP gagal karena `index.html tidak ditemukan`
-
-Buka ZIP dan pastikan bentuknya:
-
-```text
-index.html
-css/
-js/
-```
-
-Bukan beberapa folder bertingkat seperti:
-
-```text
-project/source/public/index.html
-```
-
-### APK tidak dapat update versi lama
-
-Pastikan:
-
-- Package name tidak berubah
-- `versionCode` lebih besar
-- Signing keystore dan alias sama
-
-### GitHub Actions kehabisan kuota
-
-Untuk penggunaan publik/volume tinggi, gunakan self-hosted runner atau worker Android khusus. Tambahkan rate limit pada `POST /api/builds` sebelum layanan dibuka ke banyak pengguna.
-
----
-
-## 14. Checklist production
-
-- [ ] Supabase migration berhasil
-- [ ] Bucket `sources` dan `apks` bersifat private
-- [ ] Email confirmation aktif
-- [ ] Site URL dan redirect URL production benar
-- [ ] Vercel environment lengkap
-- [ ] GitHub fine-grained token hanya mengakses repository Web2apk
-- [ ] GitHub Actions secrets Supabase sudah ditambahkan
-- [ ] Production signing keystore sudah dibackup
-- [ ] Build URL berhasil
-- [ ] Build ZIP berhasil
-- [ ] Rate limit API diterapkan sebelum layanan publik
-- [ ] Monitoring kuota GitHub Actions dan Supabase aktif
-
-## 15. Aktifkan SaaS, admin, dan cleanup
-
-Setelah migration ketiga dijalankan, setiap akun baru otomatis mendapat profile paket `free`. Batas default:
-
-- Free: 3 build/hari, 25 MB, retensi 7 hari
-- Pro: 30 build/hari, 100 MB, retensi 30 hari
-- Business: 100 build/hari, 250 MB, retensi 90 hari
-
-Promosikan admin pertama melalui Supabase SQL Editor:
-
-```sql
-update public.profiles set role='admin' where email='EMAIL_ANDA';
-```
-
-Ubah paket pengguna sementara melalui SQL sampai payment gateway terhubung:
-
-```sql
-update public.profiles set plan='pro' where email='EMAIL_PENGGUNA';
-```
-
-Buat secret acak untuk cron cleanup:
+## 12.1 Buat CRON_SECRET
 
 ```bash
 openssl rand -hex 32
 ```
 
-Simpan hasilnya sebagai `CRON_SECRET` di Vercel Production. Vercel Cron memanggil `/api/cron/cleanup` setiap hari untuk menghapus source dan output yang melewati masa retensi.
+Masukkan hasilnya ke Vercel. Jangan gunakan contoh placeholder.
 
-Builder sekarang menghasilkan APK dan AAB. Pastikan migration ketiga sudah aktif sebelum menjalankan build baru agar kolom progress dan `aab_path` tersedia.
+## 12.2 Environment scope
+
+Minimal aktifkan untuk:
+
+- Production
+
+Tambahkan juga untuk Preview/Development hanya jika memang diperlukan dan gunakan credentials terpisah jika memungkinkan.
+
+## 12.3 Setelah env berubah
+
+Environment baru tidak selalu diterapkan pada deployment lama. Lakukan:
+
+```text
+Deployments → pilih deployment terbaru → Redeploy
+```
+
+---
+
+# 13. Deployment Vercel
+
+1. Import repository `Kallxy1/Web2apk`.
+2. Framework harus terdeteksi sebagai Next.js.
+3. Root directory tetap repository root.
+4. Tambahkan seluruh environment.
+5. Deploy.
+6. Buka deployment logs.
+7. Pastikan typecheck/build sukses.
+8. Hubungkan custom domain.
+
+Perintah lokal yang sama dengan CI:
+
+```bash
+npm install
+npm run typecheck
+npm run build
+```
+
+Jangan memakai `npm audit fix --force` tanpa review karena dapat mengganti dependency ke versi breaking.
+
+---
+
+# 14. Custom Domain
+
+Tambahkan di:
+
+```text
+Vercel → Project → Settings → Domains
+```
+
+Domain:
+
+```text
+web2apk.xystudio.my.id
+```
+
+DNS subdomain biasanya:
+
+```text
+Type: CNAME
+Name: web2apk
+Target: cname.vercel-dns.com
+TTL: Auto
+```
+
+Ikuti target yang ditampilkan Vercel jika berbeda.
+
+Tunggu status:
+
+```text
+Valid Configuration
+```
+
+Vercel akan menyediakan HTTPS otomatis.
+
+Verifikasi:
+
+```bash
+curl -I https://web2apk.xystudio.my.id
+```
+
+Harus memperoleh status `200` atau redirect valid dan header keamanan seperti:
+
+```text
+strict-transport-security
+x-content-type-options
+x-frame-options
+referrer-policy
+permissions-policy
+```
+
+---
+
+# 15. Admin dan Paket SaaS
+
+Paket default:
+
+| Paket | Build/hari | Upload | Retensi |
+|---|---:|---:|---:|
+| Free | 3 | 25 MB | 7 hari |
+| Pro | 30 | 100 MB | 30 hari |
+| Business | 100 | 250 MB | 90 hari |
+
+## 15.1 Promosikan admin
+
+Jalankan di Supabase SQL Editor:
+
+```sql
+update public.profiles
+set role='admin'
+where email='EMAIL_ADMIN_ANDA';
+```
+
+Logout lalu login kembali. Menu Admin akan muncul.
+
+## 15.2 Ubah plan manual
+
+Sebelum payment gateway aktif:
+
+```sql
+update public.profiles
+set plan='pro'
+where email='EMAIL_PENGGUNA';
+```
+
+Pilihan:
+
+```text
+free
+pro
+business
+```
+
+## 15.3 Payment gateway
+
+Halaman Pricing saat ini menjadi foundation/waitlist. Untuk pembayaran production, integrasikan salah satu:
+
+- Midtrans
+- Xendit
+- Tripay
+- Stripe
+
+Jangan mengubah plan hanya berdasarkan response browser. Verifikasi webhook payment pada server, simpan transaction ID, cek signature, lalu update plan menggunakan service-role.
+
+---
+
+# 16. OneSignal Push Notification
+
+1. Buat akun OneSignal.
+2. Buat Android application.
+3. Hubungkan Firebase/FCM sesuai wizard OneSignal.
+4. Buka Settings → Keys & IDs.
+5. Salin **OneSignal App ID**.
+6. Saat build, aktifkan push notification.
+7. Masukkan OneSignal App ID.
+
+OneSignal App ID boleh masuk APK. **OneSignal REST API key tidak boleh masuk APK atau form builder.**
+
+Uji:
+
+- Install APK
+- Izinkan notifikasi
+- Pastikan device terdaftar di OneSignal
+- Kirim test notification
+- Uji foreground dan background
+
+---
+
+# 17. Pengujian End-to-End
+
+Jangan menganggap deployment selesai sebelum alur ini berhasil.
+
+## 17.1 Auth
+
+- Register
+- Confirm email
+- Login
+- Logout
+- Session refresh
+- RLS antar pengguna
+
+## 17.2 Create session
+
+Klik Build aplikasi. URL harus berbentuk:
+
+```text
+https://web2apk.xystudio.my.id/c/14karakteracak
+```
+
+Isi semua langkah:
+
+1. Source
+2. Identitas
+3. Capability
+4. Review
+
+Pastikan data langkah sebelumnya tetap terkirim saat klik Build APK.
+
+## 17.3 Build status
+
+Status normal:
+
+```text
+queued
+→ building
+→ progress 10%
+→ project Android disiapkan 35%
+→ Gradle build 55%
+→ success 100%
+```
+
+## 17.4 Output
+
+Setelah sukses, uji:
+
+- Download APK
+- Download AAB
+- Install APK
+- Splash screen
+- App icon
+- Fullscreen
+- Zoom setting
+- Back button
+- Permission
+- Offline HTML
+- OneSignal
+
+---
+
+# 18. Build URL, HTML, dan ZIP
+
+## 18.1 Website URL
+
+URL wajib HTTPS:
+
+```text
+https://example.com
+```
+
+HTTP cleartext diblokir untuk keamanan.
+
+## 18.2 HTML tunggal
+
+File yang diterima:
+
+```text
+index.html
+app.html
+website.htm
+```
+
+Sistem otomatis membungkus HTML menjadi ZIP dengan nama `index.html`.
+
+## 18.3 ZIP offline
+
+Struktur ideal:
+
+```text
+project.zip
+├── index.html
+├── css/
+├── js/
+└── assets/
+```
+
+Satu folder pembungkus juga didukung:
+
+```text
+project.zip
+└── project/
+    ├── index.html
+    └── assets/
+```
+
+Jangan memakai path absolut. Gunakan asset relatif.
+
+## 18.4 Safe extraction
+
+Builder memeriksa:
+
+- Path traversal/zip-slip
+- Ukuran file hasil ekstraksi
+- Total hasil ekstraksi
+- Kehadiran `index.html`
+
+Untuk layanan publik skala besar, tambahkan malware scanning dan batas jumlah file.
+
+---
+
+# 19. Retention dan Automatic Cleanup
+
+Vercel Cron memanggil:
+
+```text
+/api/cron/cleanup
+```
+
+Jadwal berada di `vercel.json` dan berjalan setiap hari.
+
+Endpoint memerlukan:
+
+```text
+Authorization: Bearer CRON_SECRET
+```
+
+Cleanup menghapus:
+
+- Source ZIP
+- App icon
+- APK
+- AAB
+- Database build yang kedaluwarsa
+
+Jangan memanggil endpoint tanpa secret.
+
+Pantau Vercel Cron logs setelah deployment.
+
+---
+
+# 20. Optimasi Performa dan Anti-Lag
+
+Web2APK sudah memakai:
+
+- Next.js App Router
+- Server Components pada halaman publik/dashboard
+- Dynamic import untuk APK builder
+- Dynamic import JSZip hanya saat upload ZIP
+- Route loading skeleton
+- Native scroll animation
+- Reduced-motion support
+- System font tanpa external font blocking
+- Optimized Lucide imports
+- Vercel compression
+- Static logo cache
+- `content-visibility` untuk section bawah layar
+- Mobile blur reduction
+- Mobile noise overlay disabled
+- GPU-friendly transform animation
+- Vercel Analytics
+- Vercel Speed Insights
+
+## 20.1 Menghindari lag di mobile
+
+Efek berikut mahal pada GPU mobile:
+
+- Blur besar
+- Fixed noise overlay
+- Banyak backdrop-filter
+- Animasi filter blur
+- Terlalu banyak elemen dengan `will-change`
+
+Karena itu versi mobile mengurangi blur, mematikan noise overlay, dan menggunakan animasi transform/opacity.
+
+## 20.2 Mengukur, bukan menebak
+
+Buka:
+
+```text
+Vercel → Project → Analytics
+Vercel → Project → Speed Insights
+```
+
+Pantau Core Web Vitals:
+
+- LCP
+- INP
+- CLS
+- FCP
+- TTFB
+
+Target umum:
+
+```text
+LCP < 2.5s
+INP < 200ms
+CLS < 0.1
+```
+
+## 20.3 Lighthouse
+
+Jalankan Chrome DevTools:
+
+```text
+DevTools → Lighthouse → Mobile → Analyze page load
+```
+
+Uji minimal:
+
+- `/`
+- `/login`
+- `/register`
+- `/dashboard`
+- `/c/{kode}`
+- `/pricing`
+
+Gunakan mode Incognito, nonaktifkan extension, dan uji dengan throttling mobile.
+
+## 20.4 Network testing
+
+Uji dengan:
+
+- Fast 4G
+- Slow 4G
+- Device low-end
+- Cache kosong
+- Cache aktif
+
+Skeleton harus muncul saat route/data belum siap dan tidak boleh menyebabkan layout shift besar.
+
+## 20.5 Jangan menambah dependency sembarangan
+
+Sebelum menambah library UI/animation:
+
+1. Periksa bundle size.
+2. Pastikan tree-shaking.
+3. Pilih CSS/native API jika cukup.
+4. Dynamic import library berat.
+5. Hindari animation library untuk efek sederhana.
+
+## 20.6 Optimasi gambar
+
+Untuk aset website:
+
+- Gunakan SVG untuk logo sederhana.
+- Gunakan Next Image untuk gambar raster statis.
+- Gunakan WebP/AVIF jika sesuai.
+- Jangan upload hero image berukuran beberapa MB.
+- Tentukan width/height agar CLS rendah.
+
+## 20.7 Builder performance
+
+JSZip tidak masuk initial bundle builder. Source detection baru memuat JSZip ketika file ZIP dipilih. Jangan mengubahnya menjadi static import.
+
+## 20.8 Database performance
+
+Migration telah menambahkan index pada:
+
+- User + created time
+- Status + created time
+- Public create code
+
+Untuk data besar, pantau query Supabase dan gunakan pagination. Jangan mengambil seluruh build tanpa limit ketika jumlah data sudah ribuan.
+
+---
+
+# 21. SEO dan Monitoring
+
+Sudah tersedia:
+
+```text
+/sitemap.xml
+/robots.txt
+/manifest.webmanifest
+```
+
+Halaman dashboard, API, login, register, dan create session tidak ditujukan untuk indexing.
+
+Daftarkan domain ke:
+
+- Google Search Console
+- Bing Webmaster Tools
+
+Submit:
+
+```text
+https://web2apk.xystudio.my.id/sitemap.xml
+```
+
+Monitoring yang disarankan:
+
+- Vercel Analytics
+- Vercel Speed Insights
+- Supabase logs
+- GitHub Actions logs
+- UptimeRobot/Better Stack
+- Sentry untuk error tracking lanjutan
+
+---
+
+# 22. Keamanan Production
+
+## 22.1 Secret rules
+
+Jangan commit:
+
+```text
+.env
+.env.local
+*.jks
+*.keystore
+service-role key
+GitHub token
+SMTP password
+OneSignal REST key
+```
+
+Jika secret terekspos:
+
+1. Revoke/rotate.
+2. Update Vercel/GitHub Secrets.
+3. Redeploy.
+4. Periksa logs.
+5. Jangan hanya menghapus dari commit terbaru; pertimbangkan history cleanup.
+
+## 22.2 Public website tidak bisa 100% anti-copy
+
+Klik kanan, inspect element, dan text selection bukan mekanisme keamanan. Kode server tetap tidak dikirim ke browser, tetapi HTML/CSS/client JavaScript publik dapat diperiksa.
+
+Perlindungan yang benar:
+
+- Private repository
+- Proprietary license
+- Server-side secrets
+- RLS
+- Private Storage
+- Signed URL
+- Rate/quota limits
+- Legal TOS
+
+## 22.3 Abuse prevention berikutnya
+
+Untuk traffic besar, tambahkan:
+
+- Cloudflare Turnstile
+- IP rate limit
+- Upstash Redis limiter
+- Malware scanner
+- Audit logs
+- Payment webhook verification
+- Alert build volume abnormal
+
+---
+
+# 23. Troubleshooting
+
+## 23.1 `Invalid path specified in request URL`
+
+Penyebab paling umum:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://PROJECT.supabase.co/rest/v1/
+```
+
+Perbaiki menjadi:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://PROJECT.supabase.co
+```
+
+Redeploy Vercel.
+
+## 23.2 Error `Required` saat Review
+
+Pastikan deployment sudah memakai commit fix wizard terbaru. Builder harus mempertahankan field dari semua langkah. Hard refresh atau buat sesi `/c/{kode}` baru setelah deployment.
+
+## 23.3 Build tetap queued
+
+Periksa:
+
+- `GITHUB_TOKEN` Vercel
+- Permission Actions Read and write
+- `GITHUB_OWNER=Kallxy1`
+- `GITHUB_REPO=Web2apk`
+- `GITHUB_REF=main`
+- GitHub Actions enabled
+
+## 23.4 Workflow gagal update database
+
+Periksa GitHub Actions secrets:
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+Gunakan service-role key, bukan anon key.
+
+## 23.5 `public_code` tidak ditemukan
+
+Jalankan:
+
+```text
+004_private_build_sessions.sql
+```
+
+## 23.6 Profile/plan error
+
+Jalankan:
+
+```text
+003_saas_and_build_operations.sql
+```
+
+Pastikan profile user tersedia:
+
+```sql
+select * from public.profiles order by created_at desc;
+```
+
+## 23.7 Email tidak masuk
+
+- Periksa Supabase Auth logs
+- Periksa spam
+- Verifikasi SMTP
+- Periksa SPF/DKIM/DMARC
+- Pastikan email confirmation aktif
+
+## 23.8 ZIP gagal
+
+Pastikan `index.html` ada di root atau tepat dalam satu folder pembungkus.
+
+## 23.9 APK tidak dapat update
+
+- Package name harus sama
+- Version code harus naik
+- Signing key harus sama
+
+## 23.10 AAB tidak tersedia
+
+Pastikan migration 003 aktif dan workflow terbaru menjalankan:
+
+```text
+assembleRelease
+bundleRelease
+```
+
+## 23.11 Website terasa lambat
+
+1. Buka Speed Insights.
+2. Cari route dan device yang lambat.
+3. Uji tanpa extension.
+4. Periksa ukuran asset.
+5. Periksa Supabase region.
+6. Periksa API latency.
+7. Pastikan deployment terbaru.
+8. Jangan menambah blur/animation berat pada mobile.
+9. Gunakan pagination untuk data besar.
+10. Periksa browser memory pada wizard upload file besar.
+
+## 23.12 Vercel env sudah diubah tetapi error masih sama
+
+Environment hanya masuk pada deployment baru. Redeploy setelah mengubah env dan lakukan hard refresh.
+
+---
+
+# 24. Update dan Rollback
+
+## 24.1 Sebelum push
+
+```bash
+npm install
+npm run typecheck
+npm run build
+```
+
+Periksa:
+
+```bash
+git status
+git diff --check
+```
+
+Pastikan tidak ada secret.
+
+## 24.2 Deployment normal
+
+```text
+Commit → Push main → GitHub CI → Vercel production deploy
+```
+
+## 24.3 Migration discipline
+
+- Migration database harus additive jika memungkinkan.
+- Jalankan migration sebelum fitur baru yang bergantung pada kolom tersebut dipakai.
+- Backup sebelum perubahan destruktif.
+- Jangan menghapus kolom production tanpa masa transisi.
+
+## 24.4 Rollback aplikasi
+
+Di Vercel:
+
+```text
+Deployments → pilih deployment sehat → Promote to Production
+```
+
+Rollback kode tidak otomatis rollback database. Migration database harus ditangani terpisah dan hati-hati.
+
+---
+
+# 25. Checklist Production
+
+## Database
+
+- [ ] Migration 001 berhasil
+- [ ] Migration 002 berhasil
+- [ ] Migration 003 berhasil
+- [ ] Migration 004 berhasil
+- [ ] Table `builds` lengkap
+- [ ] Table `profiles` tersedia
+- [ ] RLS aktif
+- [ ] Index tersedia
+
+## Auth
+
+- [ ] Email provider aktif
+- [ ] Confirm email aktif
+- [ ] Site URL benar
+- [ ] Callback production benar
+- [ ] Custom SMTP aktif
+- [ ] SPF/DKIM/DMARC valid
+
+## Storage
+
+- [ ] `sources` private
+- [ ] `apks` private
+- [ ] Signed download bekerja
+- [ ] Cleanup cron bekerja
+
+## Vercel
+
+- [ ] Seluruh env tersedia
+- [ ] Supabase URL tanpa `/rest/v1`
+- [ ] `CRON_SECRET` kuat
+- [ ] Custom domain valid
+- [ ] HTTPS aktif
+- [ ] Analytics aktif
+- [ ] Speed Insights aktif
+
+## GitHub
+
+- [ ] Actions aktif
+- [ ] CI sukses
+- [ ] Build workflow dapat di-dispatch
+- [ ] Supabase secrets tersedia
+- [ ] Token dibatasi ke satu repository
+- [ ] Repository private jika source harus dilindungi
+
+## Android
+
+- [ ] Production keystore tersedia
+- [ ] Keystore dibackup
+- [ ] APK berhasil
+- [ ] AAB berhasil
+- [ ] App icon berhasil
+- [ ] Splash berhasil
+- [ ] Permission berhasil
+- [ ] OneSignal berhasil
+
+## SaaS
+
+- [ ] Admin pertama dipromosikan
+- [ ] Free quota bekerja
+- [ ] Retention bekerja
+- [ ] Retry bekerja
+- [ ] Delete project bekerja
+- [ ] Pricing sesuai kebijakan bisnis
+- [ ] Webhook payment diverifikasi sebelum plan otomatis
+
+## Performance
+
+- [ ] Lighthouse mobile diuji
+- [ ] LCP < 2.5 detik pada kondisi wajar
+- [ ] INP < 200 ms
+- [ ] CLS < 0.1
+- [ ] Tidak ada asset gambar besar
+- [ ] Skeleton muncul pada route dinamis
+- [ ] Mobile blur tidak berlebihan
+- [ ] Upload ZIP tidak membekukan UI secara lama
+
+## Security
+
+- [ ] Tidak ada `.env` dalam Git
+- [ ] Tidak ada token dalam Git
+- [ ] Token chat lama sudah di-rotate
+- [ ] Service-role hanya server-side
+- [ ] Keystore tidak masuk repository
+- [ ] TOS, Privacy, Security tersedia
+- [ ] Monitoring dan alert aktif
+
+---
+
+# Quick Recovery Checklist
+
+Jika production bermasalah setelah update:
+
+1. Periksa deployment Vercel terbaru.
+2. Periksa GitHub CI.
+3. Periksa semua migration.
+4. Periksa environment Vercel.
+5. Pastikan Supabase URL tidak mengandung `/rest/v1`.
+6. Periksa Supabase Auth logs.
+7. Periksa GitHub Actions build logs.
+8. Coba akun dan create session baru.
+9. Rollback deployment Vercel jika perlu.
+10. Jangan menghapus database untuk memperbaiki error konfigurasi.
+
+---
+
+**Powered by XyStudio's**<br>
+**Dikembangkan oleh KallAntiKecot**

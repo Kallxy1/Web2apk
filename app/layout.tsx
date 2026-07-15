@@ -1,6 +1,5 @@
 import type {Metadata,Viewport} from "next";
-import {Analytics} from "@vercel/analytics/next";
-import {SpeedInsights} from "@vercel/speed-insights/next";
+import {ConsentAwareAnalytics,CookieConsent} from "@/components/cookie-consent";
 import "./globals.css";
 const site="https://web2apk.xystudio.my.id";
 export const viewport:Viewport={width:"device-width",initialScale:1,maximumScale:1,userScalable:false,themeColor:"#050505",colorScheme:"dark"};
@@ -15,4 +14,4 @@ export const metadata:Metadata={
  icons:{icon:"/logo.svg",apple:"/logo.svg"},manifest:"/manifest.webmanifest",
  robots:{index:true,follow:true,googleBot:{index:true,follow:true,"max-image-preview":"large","max-snippet":-1}},
 };
-export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="id"><body className="noise">{children}<Analytics/><SpeedInsights/></body></html>}
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="id"><body className="noise">{children}<CookieConsent/><ConsentAwareAnalytics/></body></html>}

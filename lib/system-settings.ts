@@ -1,0 +1,2 @@
+import {createAdminClient} from "@/lib/supabase/admin";
+export async function getSystemSettings(){try{const {data}=await createAdminClient().from("system_settings").select("key,value");const values=Object.fromEntries((data||[]).map(x=>[x.key,x.value]));return {maintenanceMode:values.maintenance_mode===true,registrationEnabled:values.registration_enabled!==false,buildsEnabled:values.builds_enabled!==false,announcement:typeof values.announcement==="string"?values.announcement:""}}catch{return {maintenanceMode:false,registrationEnabled:true,buildsEnabled:true,announcement:""}}}

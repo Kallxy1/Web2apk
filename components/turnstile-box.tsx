@@ -1,0 +1,2 @@
+"use client";import {Turnstile} from "@marsidev/react-turnstile";
+export function TurnstileBox({onToken}:{onToken:(token:string)=>void}){const key=process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;if(!key)return null;return <div className="mt-5 overflow-hidden border border-white/[.08] bg-white/[.025] p-3"><Turnstile siteKey={key} onSuccess={onToken} onExpire={()=>onToken("")} options={{theme:"dark",size:"flexible"}}/></div>}

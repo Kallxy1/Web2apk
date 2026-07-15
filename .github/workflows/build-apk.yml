@@ -50,7 +50,9 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: '8.9' }
+        with: { gradle-version: '8.13' }
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
       - name: Siapkan project Android
         run: |
           rm -rf "$WORK_DIR"
@@ -58,6 +60,7 @@ jobs:
           if [ "$MODE" = "zip" ]; then
             curl --fail --location --retry 3 "$SOURCE" -o /tmp/source.zip
             python3 builder/safe_extract.py /tmp/source.zip "$WORK_DIR/app/src/main/assets/www"
+            python3 builder/scan_web_source.py "$WORK_DIR/app/src/main/assets/www"
           fi
           ICON_URL=$(printf '%s' "$CONFIG_JSON" | jq -r '.iconUrl // empty')
           if [ -n "$ICON_URL" ]; then

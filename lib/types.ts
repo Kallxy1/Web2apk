@@ -1,5 +1,5 @@
 export type BuildStatus = "queued" | "building" | "success" | "failed";
-export type BuildMode = "url" | "zip";
+export type BuildMode = "url" | "zip" | "compose";
 export interface Build {
   id: string;
   user_id: string;
@@ -26,6 +26,13 @@ export interface Build {
   allow_zoom: boolean;
   custom_user_agent: string | null;
   storage_mode: "normal" | "low" | "ephemeral";
+  min_sdk: number;
+  target_sdk: 35 | 36;
+  architecture: "universal" | "arm64" | "arm32" | "arm_both" | "x86_64";
+  data_folder_mode: "none" | "internal" | "media" | "downloads";
+  backend_provider: "none" | "supabase" | "firebase" | "custom";
+  backend_url: string | null;
+  backend_public_key: string | null;
   status: BuildStatus;
   apk_path: string | null;
   aab_path: string | null;

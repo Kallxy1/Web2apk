@@ -1,2 +1,2 @@
-import type { MetadataRoute } from "next";
-export default function sitemap():MetadataRoute.Sitemap{const base="https://web2apk.xystudio.my.id";return ["","/pricing","/help","/faq","/privacy","/cookies","/terms","/security","/login","/register"].map((path)=>({url:`${base}${path}`,lastModified:new Date(),changeFrequency:path===""?"weekly":"monthly",priority:path===""?1:.6}))}
+import type {MetadataRoute} from "next";import {helpArticles} from "@/lib/help-content";
+export default function sitemap():MetadataRoute.Sitemap{const base="https://web2apk.xystudio.my.id",pages=["","/pricing","/help","/faq","/privacy","/cookies","/terms","/security","/login","/register",...Object.keys(helpArticles).map(x=>`/help/${x}`)];return pages.map(path=>({url:`${base}${path}`,lastModified:new Date(),changeFrequency:path===""?"weekly":"monthly",priority:path===""?1:path.startsWith("/help/") ? .5 : .6}))}

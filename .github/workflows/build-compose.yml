@@ -1,0 +1,125 @@
+name: Build Trusted Compose APK
+run-name: "Compose APK · ${{ inputs.build_id }}"
+on:
+  workflow_dispatch:
+    inputs:
+      build_id: { description: Build ID, required: true, type: string }
+      user_id: { description: User ID, required: true, type: string }
+      mode: { description: compose, required: true, type: string }
+      source: { description: Signed project ZIP URL, required: true, type: string }
+      config: { description: JSON app configuration, required: true, type: string }
+permissions: { contents: read }
+concurrency: { group: "compose-${{ inputs.build_id }}", cancel-in-progress: false }
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark build active
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          BASE="${SUPABASE_URL%/}"; BASE="${BASE%/rest/v1}"
+          curl --fail --silent --show-error -X PATCH "$BASE/rest/v1/builds?id=eq.${{ inputs.build_id }}" \
+            -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" -H "Content-Type: application/json" \
+            -d '{"status":"building","progress":10,"current_step":"Compose worker terisolasi aktif","error_message":null}'
+  build-untrusted:
+    needs: mark
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.13', cache-disabled: true }
+      - name: Install SDK and malware scanner
+        run: |
+          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clamav
+          sudo freshclam || true
+      - name: Download, scan and extract project
+        env: { SOURCE_URL: "${{ inputs.source }}" }
+        run: |
+          curl --fail --location --retry 3 "$SOURCE_URL" -o /tmp/compose-project.zip
+          set +e
+          clamscan --infected --no-summary /tmp/compose-project.zip; SCAN=$?
+          set -e
+          [ "$SCAN" -eq 1 ] && { echo "Malware detected in project archive"; exit 1; }
+          rm -rf compose-work
+          python3 builder/extract_android_project.py /tmp/compose-project.zip compose-work
+          set +e
+          clamscan --recursive --infected --no-summary compose-work; SCAN=$?
+          set -e
+          [ "$SCAN" -eq 1 ] && { echo "Malware detected in extracted project"; exit 1; }
+          chmod +x compose-work/gradlew
+      - name: Build project without production secrets
+        working-directory: compose-work
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleRelease 2>&1 | tee /tmp/compose-gradle.log
+      - name: Collect APK
+        if: success()
+        run: |
+          mkdir -p /tmp/compose-output
+          find compose-work -type f -path '*/build/outputs/apk/release/*.apk' -exec cp {} /tmp/compose-output/ \;
+          test -n "$(find /tmp/compose-output -name '*.apk' -print -quit)"
+      - name: Preserve result and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-untrusted-${{ inputs.build_id }}
+          path: |
+            /tmp/compose-output/*.apk
+            /tmp/compose-gradle.log
+          if-no-files-found: warn
+          retention-days: 1
+  publish:
+    needs: build-untrusted
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: { name: "compose-untrusted-${{ inputs.build_id }}", path: /tmp/result }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Publish result safely
+        env: { BUILD_RESULT: "${{ needs.build-untrusted.result }}" }
+        run: |
+          BASE="${SUPABASE_URL%/}"; BASE="${BASE%/rest/v1}"
+          if [ "$BUILD_RESULT" != "success" ]; then
+            DETAIL=$(tail -n 60 /tmp/result/compose-gradle.log 2>/dev/null || echo "Compose build failed before Gradle log was produced")
+            jq -n --arg e "$DETAIL" '{status:"failed",current_step:"Compose build gagal",error_message:$e}' >/tmp/state.json
+            curl --silent --show-error -X PATCH "$BASE/rest/v1/builds?id=eq.${{ inputs.build_id }}" -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" -H "Content-Type: application/json" --data-binary @/tmp/state.json
+            exit 0
+          fi
+          sdkmanager "build-tools;36.0.0" >/dev/null
+          APK=$(find /tmp/result -name '*.apk' -print -quit); test -n "$APK"
+          zipalign -f 4 "$APK" /tmp/aligned.apk
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode >/tmp/release.jks
+          else
+            KEYSTORE_PASSWORD=android; KEY_PASSWORD=android; KEY_ALIAS=androiddebugkey
+            keytool -genkeypair -keystore /tmp/release.jks -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Web2APK Debug"
+          fi
+          apksigner sign --ks /tmp/release.jks --ks-pass "pass:$KEYSTORE_PASSWORD" --ks-key-alias "$KEY_ALIAS" --key-pass "pass:$KEY_PASSWORD" --out /tmp/app-release.apk /tmp/aligned.apk
+          apksigner verify /tmp/app-release.apk
+          OBJECT="${{ inputs.user_id }}/${{ inputs.build_id }}.apk"
+          curl --fail --silent --show-error -X POST "$BASE/storage/v1/object/apks/$OBJECT" -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" -H "Content-Type: application/vnd.android.package-archive" -H "x-upsert: true" --data-binary @/tmp/app-release.apk
+          jq -n --arg p "$OBJECT" '{status:"success",progress:100,current_step:"Compose APK selesai",apk_path:$p,error_message:null}' >/tmp/state.json
+          curl --fail --silent --show-error -X PATCH "$BASE/rest/v1/builds?id=eq.${{ inputs.build_id }}" -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" -H "Content-Type: application/json" --data-binary @/tmp/state.json
+      - name: Keep final APK
+        if: ${{ needs.build-untrusted.result == 'success' }}
+        uses: actions/upload-artifact@v4
+        with: { name: "compose-apk-${{ inputs.build_id }}", path: /tmp/app-release.apk, retention-days: 7 }

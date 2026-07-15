@@ -16,6 +16,11 @@ Platform full-stack untuk mengubah **URL website** atau **source HTML/CSS/JS dal
 - Permission kamera, mikrofon, lokasi, notifikasi, dan getar
 - OneSignal push notification serta welcome notification custom
 - Worker Android WebView di GitHub Actions
+- Trusted Jetpack Compose project builder dengan isolated untrusted job
+- Cloudflare Turnstile, Upstash rate limit, malware scan, audit logs, abnormal-volume alert
+- HMAC signed APK delivery melalui `api.xystudio.my.id`
+- Admin system controls, maintenance mode, Compose access, dan audit viewer
+- Cookie consent granular serta Help/Legal Center lengkap
 - Private source/APK bucket dan signed download URL
 - Supabase Row Level Security per pengguna
 - ZIP extraction guard (zip-slip dan extracted-size limit)
@@ -44,7 +49,7 @@ web2apk/
 ## 1. Persiapan Supabase
 
 1. Buat project di [Supabase](https://supabase.com).
-2. Buka **SQL Editor**, jalankan Jalankan seluruh migration secara berurutan dari `001_initial.sql` hingga `007_webview_storage_modes.sql`.
+2. Buka **SQL Editor**, jalankan Jalankan seluruh migration secara berurutan dari `001_initial.sql` hingga `010_backend_bridge.sql`.
 3. Di **Authentication → URL Configuration**, set Site URL ke domain aplikasi dan redirect URL ke `https://DOMAIN/auth/callback`.
 4. Ambil Project URL, anon key, dan service-role key dari pengaturan API.
 

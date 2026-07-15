@@ -1,0 +1,1 @@
+export function normalizeSupabaseUrl(value:string|undefined){if(!value)throw new Error("NEXT_PUBLIC_SUPABASE_URL belum dikonfigurasi");const cleaned=value.trim().replace(/^['"]|['"]$/g,"");const url=new URL(cleaned);url.pathname=url.pathname.replace(/\/(rest|auth|storage)\/v1\/?$/i,"").replace(/\/+$/,"");url.search="";url.hash="";return url.toString().replace(/\/$/,"")}

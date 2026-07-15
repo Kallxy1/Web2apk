@@ -27,6 +27,13 @@ jobs:
       KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v5
+      - name: Normalisasi Supabase project URL
+        run: |
+          BASE="${SUPABASE_URL%/}"
+          BASE="${BASE%/rest/v1}"
+          BASE="${BASE%/auth/v1}"
+          BASE="${BASE%/storage/v1}"
+          echo "SUPABASE_URL=$BASE" >> "$GITHUB_ENV"
       - name: Tandai sebagai building
         run: |
           curl --fail --silent --show-error -X PATCH \

@@ -44,7 +44,7 @@ web2apk/
 ## 1. Persiapan Supabase
 
 1. Buat project di [Supabase](https://supabase.com).
-2. Buka **SQL Editor**, jalankan Jalankan seluruh migration secara berurutan dari `001_initial.sql` hingga `005_build_logs_and_admin_controls.sql`.
+2. Buka **SQL Editor**, jalankan Jalankan seluruh migration secara berurutan dari `001_initial.sql` hingga `006_premium_app_updates.sql`.
 3. Di **Authentication → URL Configuration**, set Site URL ke domain aplikasi dan redirect URL ke `https://DOMAIN/auth/callback`.
 4. Ambil Project URL, anon key, dan service-role key dari pengaturan API.
 

@@ -16,7 +16,9 @@ export async function middleware(request: NextRequest) {
     }}
   );
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user && (request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/c/"))) {
+  const protectedRoute=request.nextUrl.pathname.startsWith("/dashboard")||request.nextUrl.pathname.startsWith("/c/");
+  if(user&&protectedRoute){const {data:profile}=await supabase.from("profiles").select("is_suspended").eq("id",user.id).maybeSingle();if(profile?.is_suspended){const url=request.nextUrl.clone();url.pathname="/login";url.searchParams.set("error","suspended");return NextResponse.redirect(url)}}
+  if (!user && protectedRoute) {
     const url = request.nextUrl.clone(); url.pathname = "/login"; return NextResponse.redirect(url);
   }
   if (user && ["/login", "/register"].includes(request.nextUrl.pathname)) {

@@ -4,6 +4,7 @@ export interface Build {
   id: string;
   user_id: string;
   public_code: string | null;
+  parent_build_id: string | null;
   name: string;
   package_name: string;
   mode: BuildMode;

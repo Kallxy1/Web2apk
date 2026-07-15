@@ -192,6 +192,7 @@ supabase/migrations/002_advanced_app_options.sql
 supabase/migrations/003_saas_and_build_operations.sql
 supabase/migrations/004_private_build_sessions.sql
 supabase/migrations/005_build_logs_and_admin_controls.sql
+supabase/migrations/006_premium_app_updates.sql
 ```
 
 Jalankan satu file, pastikan berhasil, lalu lanjut ke file berikutnya.
@@ -259,7 +260,11 @@ Menambahkan:
 - Detail error Gradle saat workflow gagal
 - Status suspend pengguna untuk admin
 
-## 4.6 Verifikasi table
+## 4.6 Migration 006 — Premium app updates
+
+Menambahkan hubungan antar versi aplikasi. Pengguna Pro/Business dapat memakai source, icon, package name, dan konfigurasi versi lama, lalu mengubah seluruh opsi dan membangun version code berikutnya. Update premium tidak memotong kuota build baru harian.
+
+## 4.7 Verifikasi table
 
 Buka **Table Editor → builds**. Pastikan kolom penting tersedia:
 
@@ -307,7 +312,7 @@ Pastikan table berikut juga tersedia:
 public.profiles
 ```
 
-## 4.7 Jangan menjalankan migration acak
+## 4.8 Jangan menjalankan migration acak
 
 Migration harus dijalankan satu kali dan berurutan. Jika migration enum dijalankan ulang dan muncul pesan object already exists, jangan menghapus database production. Periksa migration mana yang sudah aktif terlebih dahulu.
 
@@ -329,7 +334,11 @@ Aktifkan:
 
 Untuk testing singkat, email confirmation boleh dimatikan sementara. Aktifkan kembali sebelum website dibuka ke publik.
 
-## 5.1 URL Configuration
+## 5.1 Session dikenali di seluruh website
+
+Web2APK mengenali akun melalui secure Supabase session cookie, bukan alamat IP. Header landing, pricing, FAQ, legal, dan help center otomatis mengganti tombol Masuk/Daftar menjadi Dashboard/Build Baru ketika session aktif. IP tidak boleh dijadikan identitas karena dapat berubah, dipakai bersama satu jaringan, atau berada di balik VPN/CGNAT.
+
+## 5.2 URL Configuration
 
 Buka:
 
@@ -355,7 +364,7 @@ http://localhost:3000/**
 
 Jika menggunakan Vercel Preview, tambahkan pola preview secara hati-hati atau tambahkan URL preview tertentu yang sedang dipakai.
 
-## 5.2 Confirmation email flow
+## 5.3 Confirmation email flow
 
 Alur normal:
 
@@ -370,7 +379,7 @@ Alur normal:
 
 Pastikan template email konfirmasi menggunakan confirmation URL yang disediakan Supabase.
 
-## 5.3 Tes Auth
+## 5.4 Tes Auth
 
 Uji:
 
@@ -608,6 +617,7 @@ Tambahkan:
 
 ```env
 NEXT_PUBLIC_APP_URL=https://web2apk.xystudio.my.id
+NEXT_PUBLIC_HELP_URL=https://help.xystudio.my.id
 NEXT_PUBLIC_SUPABASE_URL=https://PROJECT_ID.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=SUPABASE_ANON_OR_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY
@@ -692,6 +702,20 @@ TTL: Auto
 
 Ikuti target yang ditampilkan Vercel jika berbeda.
 
+Untuk pusat bantuan terpisah, tambahkan juga domain berikut ke project Vercel yang sama:
+
+```text
+help.xystudio.my.id
+```
+
+Buat CNAME `help` mengikuti target Vercel, lalu tambahkan environment:
+
+```env
+NEXT_PUBLIC_HELP_URL=https://help.xystudio.my.id
+```
+
+Konfigurasi host akan menampilkan Help Center pada root subdomain, sedangkan `/terms`, `/privacy`, `/cookies`, `/faq`, dan `/security` memakai halaman legal/help yang sama tanpa duplikasi project.
+
 Tunggu status:
 
 ```text
@@ -764,7 +788,21 @@ pro
 business
 ```
 
-## 15.3 Payment gateway
+## 15.3 Premium app updates
+
+Pengguna Pro dan Business mendapat tombol **Buat versi update** pada build yang sukses. Sistem:
+
+- Memakai ulang source dan app icon versi sebelumnya
+- Mempertahankan package name agar APK dapat menjadi update aplikasi lama
+- Menyarankan version code +1
+- Mengizinkan perubahan nama, versi, permission, splash, warna, orientasi, URL/source baru, dan capability lain
+- Menyalin source ke storage object baru agar versi lama dan baru terpisah
+- Tidak memotong kuota build baru harian untuk update premium
+- Menghubungkan versi melalui `parent_build_id`
+
+Package name harus tetap sama untuk update Android yang sebenarnya, dan signing key wajib sama dengan versi sebelumnya.
+
+## 15.4 Payment gateway
 
 Halaman Pricing saat ini menjadi foundation/waitlist. Untuk pembayaran production, integrasikan salah satu:
 
@@ -1332,6 +1370,7 @@ Rollback kode tidak otomatis rollback database. Migration database harus ditanga
 - [ ] Migration 003 berhasil
 - [ ] Migration 004 berhasil
 - [ ] Migration 005 berhasil
+- [ ] Migration 006 berhasil
 - [ ] Table `builds` lengkap
 - [ ] Table `build_logs` tersedia
 - [ ] Table `profiles` tersedia

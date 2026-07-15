@@ -193,6 +193,7 @@ supabase/migrations/003_saas_and_build_operations.sql
 supabase/migrations/004_private_build_sessions.sql
 supabase/migrations/005_build_logs_and_admin_controls.sql
 supabase/migrations/006_premium_app_updates.sql
+supabase/migrations/007_webview_storage_modes.sql
 ```
 
 Jalankan satu file, pastikan berhasil, lalu lanjut ke file berikutnya.
@@ -264,7 +265,11 @@ Menambahkan:
 
 Menambahkan hubungan antar versi aplikasi. Pengguna Pro/Business dapat memakai source, icon, package name, dan konfigurasi versi lama, lalu mengubah seluruh opsi dan membangun version code berikutnya. Update premium tidak memotong kuota build baru harian.
 
-## 4.7 Verifikasi table
+## 4.7 Migration 007 — WebView storage modes
+
+Menambahkan mode `normal`, `low`, dan `ephemeral`. Mode `low` menjadi default untuk menekan HTTP/WebView cache. Mode `ephemeral` juga menghapus cookie dan WebStorage sehingga cocok untuk aplikasi privat tetapi dapat membuat pengguna website logout.
+
+## 4.8 Verifikasi table
 
 Buka **Table Editor → builds**. Pastikan kolom penting tersedia:
 
@@ -312,7 +317,7 @@ Pastikan table berikut juga tersedia:
 public.profiles
 ```
 
-## 4.8 Jangan menjalankan migration acak
+## 4.9 Jangan menjalankan migration acak
 
 Migration harus dijalankan satu kali dan berurutan. Jika migration enum dijalankan ulang dan muncul pesan object already exists, jangan menghapus database production. Periksa migration mana yang sudah aktif terlebih dahulu.
 
@@ -1307,11 +1312,15 @@ Pastikan GitHub Actions berhasil menjalankan `assembleRelease`, signing tidak sa
 
 Environment hanya masuk pada deployment baru. Redeploy setelah mengubah env dan lakukan hard refresh.
 
-## 23.13 Gradle `checkReleaseDuplicateClasses`
+## 23.13 APK kecil tetapi Data Pengguna ratusan MB
+
+Ukuran APK berbeda dari data WebView. Periksa Android App Info → Storage untuk membedakan App, User data, dan Cache. Build ulang menggunakan mode **Hemat Storage**. Setelah memasang versi baru, hapus data atau uninstall versi lama satu kali karena Android mempertahankan data versi sebelumnya ketika APK hanya di-update. Periksa juga `localStorage`, IndexedDB, Cache Storage, service worker, asset base64, dan script yang menulis data berulang pada HTML.
+
+## 23.14 Gradle `checkReleaseDuplicateClasses`
 
 Jika log menyebut duplicate Kotlin stdlib/jdk7/jdk8, pastikan template terbaru digunakan. Builder sekarang hanya menambahkan dependency OneSignal ketika push notification benar-benar aktif dan memaksa versi Kotlin dependency agar konsisten. Build tanpa OneSignal tidak lagi membawa dependency Kotlin tersebut.
 
-## 23.14 Signing password kosong
+## 23.15 Signing password kosong
 
 Jika log menampilkan `ANDROID_KEYSTORE_PASSWORD`, alias, atau key password kosong, lengkapi seluruh GitHub signing secrets atau hapus `ANDROID_KEYSTORE_BASE64` untuk sementara agar builder memakai debug signing.
 
@@ -1371,6 +1380,7 @@ Rollback kode tidak otomatis rollback database. Migration database harus ditanga
 - [ ] Migration 004 berhasil
 - [ ] Migration 005 berhasil
 - [ ] Migration 006 berhasil
+- [ ] Migration 007 berhasil
 - [ ] Table `builds` lengkap
 - [ ] Table `build_logs` tersedia
 - [ ] Table `profiles` tersedia

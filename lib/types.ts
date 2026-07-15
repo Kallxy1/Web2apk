@@ -25,6 +25,7 @@ export interface Build {
   fullscreen: boolean;
   allow_zoom: boolean;
   custom_user_agent: string | null;
+  storage_mode: "normal" | "low" | "ephemeral";
   status: BuildStatus;
   apk_path: string | null;
   aab_path: string | null;

@@ -19,7 +19,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.core.app.NotificationCompat;
-import com.onesignal.OneSignal;
+__ONESIGNAL_IMPORT__
 public class MainActivity extends Activity {
     private WebView webView;
     private static final String ONE_SIGNAL_APP_ID="__ONESIGNAL_APP_ID__";
@@ -28,7 +28,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(Color.parseColor("__THEME_COLOR__"));
         if(__FULLSCREEN__)getWindow().getDecorView().setSystemUiVisibility(5894);
         setContentView(R.layout.activity_main);View splash=findViewById(R.id.splash);if(__SPLASH_ENABLED__){splash.setVisibility(View.VISIBLE);splash.postDelayed(()->splash.setVisibility(View.GONE),__SPLASH_DURATION__);}requestSelectedPermissions();
-        if(!ONE_SIGNAL_APP_ID.isEmpty())OneSignal.initWithContext(this,ONE_SIGNAL_APP_ID);
+        __ONESIGNAL_INIT__
         webView=findViewById(R.id.webview);WebSettings s=webView.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);s.setDatabaseEnabled(true);s.setAllowFileAccess(__ALLOW_FILE__);s.setAllowContentAccess(false);s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);s.setSupportZoom(__ALLOW_ZOOM__);s.setBuiltInZoomControls(__ALLOW_ZOOM__);s.setDisplayZoomControls(false);String ua="__CUSTOM_USER_AGENT__";if(!ua.isEmpty())s.setUserAgentString(ua);
         webView.setWebViewClient(new WebViewClient(){@Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return false;}});
         webView.setWebChromeClient(new WebChromeClient(){@Override public void onPermissionRequest(PermissionRequest request){runOnUiThread(()->request.grant(request.getResources()));}@Override public void onGeolocationPermissionsShowPrompt(String origin,GeolocationPermissions.Callback callback){callback.invoke(origin,true,false);}});

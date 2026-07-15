@@ -1,2 +1,2 @@
-import { NextResponse } from "next/server"; import { createClient } from "@/lib/supabase/server";
-export async function GET(request:Request){const {searchParams,origin}=new URL(request.url);const code=searchParams.get("code");if(code){const sb=await createClient();await sb.auth.exchangeCodeForSession(code);}return NextResponse.redirect(`${origin}/dashboard`);}
+import {NextResponse} from "next/server";import {createClient} from "@/lib/supabase/server";
+export async function GET(request:Request){const {searchParams,origin}=new URL(request.url),code=searchParams.get("code"),requested=searchParams.get("next"),next=requested?.startsWith("/")&&!requested.startsWith("//")?requested:"/dashboard";if(code){const sb=await createClient();const {error}=await sb.auth.exchangeCodeForSession(code);if(error)return NextResponse.redirect(`${origin}/login?error=callback`)}return NextResponse.redirect(`${origin}${next}`)}

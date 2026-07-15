@@ -6,7 +6,7 @@ Panduan ini adalah sumber konfigurasi utama Web2APK untuk domain:
 https://web2apk.xystudio.my.id
 ```
 
-Mencakup Supabase Auth, PostgreSQL, Row Level Security, private Storage, GitHub Actions Android builder, APK/AAB signing, OneSignal, Vercel, custom domain, SaaS quota, admin, cron cleanup, keamanan, performa, troubleshooting, dan operasional production.
+Mencakup Supabase Auth, PostgreSQL, Row Level Security, private Storage, GitHub Actions Android builder, APK signing, OneSignal, Vercel, custom domain, SaaS quota, admin, cron cleanup, keamanan, performa, troubleshooting, dan operasional production.
 
 > **Penting:** jangan pernah commit `.env`, token GitHub, Supabase service-role key, Android keystore, password signing, atau OneSignal REST API key. `.env.example` boleh masuk repository karena hanya berisi placeholder.
 
@@ -31,7 +31,7 @@ Mencakup Supabase Auth, PostgreSQL, Row Level Security, private Storage, GitHub 
 15. Admin dan paket SaaS
 16. OneSignal push notification
 17. Pengujian end-to-end
-18. Build URL, HTML, ZIP, APK, dan AAB
+18. Build URL, HTML, ZIP, dan APK
 19. Retention dan automatic cleanup
 20. Optimasi performa dan anti-lag
 21. SEO dan monitoring
@@ -60,7 +60,7 @@ Browser / Pengguna
 │   ├── Build status
 │   ├── Retry build
 │   ├── Delete project
-│   ├── Signed APK/AAB download
+│   ├── Signed APK download
 │   └── Scheduled cleanup
 │
 ├── Supabase
@@ -68,14 +68,14 @@ Browser / Pengguna
 │   ├── PostgreSQL
 │   ├── Row Level Security
 │   ├── Private source Storage
-│   └── Private APK/AAB Storage
+│   └── Private APK Storage
 │
 └── GitHub Actions
     ├── Download private source
     ├── Safe ZIP extraction
     ├── Generate Android project
     ├── Add icon, permission, splash, OneSignal
-    ├── Build APK dan AAB
+    ├── Build APK
     ├── Production signing
     ├── Upload output ke Supabase
     └── Update build progress
@@ -191,6 +191,7 @@ supabase/migrations/001_initial.sql
 supabase/migrations/002_advanced_app_options.sql
 supabase/migrations/003_saas_and_build_operations.sql
 supabase/migrations/004_private_build_sessions.sql
+supabase/migrations/005_build_logs_and_admin_controls.sql
 ```
 
 Jalankan satu file, pastikan berhasil, lalu lanjut ke file berikutnya.
@@ -230,7 +231,7 @@ Menambahkan:
 - Role `user`, `admin`
 - Trigger profile pengguna baru
 - Daily build usage
-- APK dan AAB paths
+- APK paths
 - Build progress
 - Current build step
 - Splash screen
@@ -248,7 +249,17 @@ Menambahkan `public_code` untuk URL seperti:
 
 Walaupun kolomnya bernama `public_code`, project tetap dilindungi login dan RLS. Kode hanya menjadi identifier URL yang sulit ditebak, bukan izin akses publik.
 
-## 4.5 Verifikasi table
+## 4.5 Migration 005 — Build logs dan admin controls
+
+Menambahkan:
+
+- Table `build_logs`
+- RLS log per pemilik build
+- Live log worker pada halaman build
+- Detail error Gradle saat workflow gagal
+- Status suspend pengguna untuk admin
+
+## 4.6 Verifikasi table
 
 Buka **Table Editor → builds**. Pastikan kolom penting tersedia:
 
@@ -296,7 +307,7 @@ Pastikan table berikut juga tersedia:
 public.profiles
 ```
 
-## 4.6 Jangan menjalankan migration acak
+## 4.7 Jangan menjalankan migration acak
 
 Migration harus dijalankan satu kali dan berurutan. Jika migration enum dijalankan ulang dan muncul pesan object already exists, jangan menghapus database production. Periksa migration mana yang sudah aktif terlebih dahulu.
 
@@ -369,6 +380,9 @@ Uji:
 - Refresh browser
 - Logout
 - Login password salah
+- Show/hide password
+- Lupa password dan email recovery
+- Menetapkan password baru
 - User A tidak dapat membuka build User B
 
 ---
@@ -420,7 +434,6 @@ Jangan mengubah bucket menjadi public.
 sources/{user_id}/{build_id}/source.zip
 sources/{user_id}/{build_id}/icon.png
 apks/{user_id}/{build_id}.apk
-apks/{user_id}/{build_id}.aab
 ```
 
 Download dilakukan memakai signed URL sementara.
@@ -579,7 +592,7 @@ Backup permanen:
 
 Jika signing key hilang, update aplikasi dengan package name yang sama dapat menjadi tidak mungkin.
 
-Jangan commit `.jks`, `.keystore`, atau file base64.
+Jangan commit `.jks`, `.keystore`, atau file base64. Keempat signing secret wajib terisi bersama. Jika hanya `ANDROID_KEYSTORE_BASE64` yang terisi sementara password/alias kosong, workflow terbaru mengabaikan signing production dan memakai debug signing agar build tidak gagal.
 
 ---
 
@@ -725,7 +738,13 @@ set role='admin'
 where email='EMAIL_ADMIN_ANDA';
 ```
 
-Logout lalu login kembali. Menu Admin akan muncul.
+Logout lalu login kembali. Menu Admin akan muncul. Admin Control Center dapat:
+
+- Mengubah paket Free/Pro/Business
+- Mengubah role User/Admin
+- Suspend atau mengaktifkan kembali akun
+- Melihat statistik pengguna dan build
+- Menghapus build gagal beserta source dan APK
 
 ## 15.2 Ubah plan manual
 
@@ -823,12 +842,13 @@ queued
 → success 100%
 ```
 
+Panel Build Log menampilkan event worker, validasi source, persiapan project, proses Gradle, upload APK, dan potongan error Gradle jika build gagal. Fitur ini memerlukan migration 005.
+
 ## 17.4 Output
 
 Setelah sukses, uji:
 
 - Download APK
-- Download AAB
 - Install APK
 - Splash screen
 - App icon
@@ -922,7 +942,6 @@ Cleanup menghapus:
 - Source ZIP
 - App icon
 - APK
-- AAB
 - Database build yang kedaluwarsa
 
 Jangan memanggil endpoint tanpa secret.
@@ -1229,14 +1248,9 @@ Pastikan `index.html` ada di root atau tepat dalam satu folder pembungkus.
 - Version code harus naik
 - Signing key harus sama
 
-## 23.10 AAB tidak tersedia
+## 23.10 APK tidak tersedia
 
-Pastikan migration 003 aktif dan workflow terbaru menjalankan:
-
-```text
-assembleRelease
-bundleRelease
-```
+Pastikan GitHub Actions berhasil menjalankan `assembleRelease`, signing tidak salah, dan upload private Storage selesai.
 
 ## 23.11 Website terasa lambat
 
@@ -1254,6 +1268,14 @@ bundleRelease
 ## 23.12 Vercel env sudah diubah tetapi error masih sama
 
 Environment hanya masuk pada deployment baru. Redeploy setelah mengubah env dan lakukan hard refresh.
+
+## 23.13 Gradle `checkReleaseDuplicateClasses`
+
+Jika log menyebut duplicate Kotlin stdlib/jdk7/jdk8, pastikan template terbaru digunakan. Builder sekarang hanya menambahkan dependency OneSignal ketika push notification benar-benar aktif dan memaksa versi Kotlin dependency agar konsisten. Build tanpa OneSignal tidak lagi membawa dependency Kotlin tersebut.
+
+## 23.14 Signing password kosong
+
+Jika log menampilkan `ANDROID_KEYSTORE_PASSWORD`, alias, atau key password kosong, lengkapi seluruh GitHub signing secrets atau hapus `ANDROID_KEYSTORE_BASE64` untuk sementara agar builder memakai debug signing.
 
 ---
 
@@ -1309,7 +1331,9 @@ Rollback kode tidak otomatis rollback database. Migration database harus ditanga
 - [ ] Migration 002 berhasil
 - [ ] Migration 003 berhasil
 - [ ] Migration 004 berhasil
+- [ ] Migration 005 berhasil
 - [ ] Table `builds` lengkap
+- [ ] Table `build_logs` tersedia
 - [ ] Table `profiles` tersedia
 - [ ] RLS aktif
 - [ ] Index tersedia
@@ -1354,7 +1378,6 @@ Rollback kode tidak otomatis rollback database. Migration database harus ditanga
 - [ ] Production keystore tersedia
 - [ ] Keystore dibackup
 - [ ] APK berhasil
-- [ ] AAB berhasil
 - [ ] App icon berhasil
 - [ ] Splash berhasil
 - [ ] Permission berhasil
